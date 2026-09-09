@@ -83,6 +83,106 @@ function isArtboardRect(node, viewW, viewH, bounds) {
  */
 const CHOSEN_ATTR = 'data-vl-chosen';
 
+/** The paint and visibility properties SVGLoader reads off an element. `transform` is not
+ *  here on purpose: SVGLoader honours only the ATTRIBUTE, so a CSS transform must stay ignored
+ *  rather than become one. */
+const PAINT_PROPS = new Set([
+  'fill', 'fill-opacity', 'fill-rule', 'opacity', 'stroke', 'stroke-opacity', 'stroke-width',
+  'stroke-linejoin', 'stroke-linecap', 'stroke-miterlimit', 'visibility', 'display',
+]);
+
+/** `fill:none; stroke: #000` → { fill: 'none', stroke: '#000' }, paint properties only. */
+function parseDecls(text) {
+  const out = {};
+  for (const decl of (text || '').split(';')) {
+    const i = decl.indexOf(':');
+    if (i < 0) continue;
+    const k = decl.slice(0, i).trim().toLowerCase();
+    const v = decl.slice(i + 1).replace(/!important/i, '').trim();
+    if (PAINT_PROPS.has(k) && v) out[k] = v;
+  }
+  return out;
+}
+
+/**
+ * Write every element's CSS paint into presentation attributes, and return the new markup.
+ *
+ * SVGLoader reads paint from three places, weakest first: the attribute, a `<style>` rule
+ * matching the element's class or id, and the element's own `style=""`. The last two go
+ * through the browser's CSSOM — and inside the MakerLab host they never get there. Its
+ * `style-src` has no 'unsafe-inline', so a `<style>` element in the parsed file has no
+ * stylesheet and a `style` attribute has an empty `node.style`. An Illustrator export
+ * (`<style>.cls-1{fill:none;stroke:#000}</style>`) then reads as SVGLoader's default — solid
+ * black — and an outline drawing arrives as a filled blob. The same file reads correctly on
+ * the public site, which is why nobody saw it.
+ *
+ * So the cascade is resolved HERE, in the same order SVGLoader would, into attributes — the
+ * one place it reads that no policy can block. Only class and id selectors, because that is
+ * all SVGLoader itself supports; anything else in the block is ignored by both. Styles set
+ * on a `<g>` land on the `<g>` and inherit through SVGLoader exactly as before.
+ *
+ * Uses `getElementsByTagName` rather than `querySelectorAll`: the headless test parses
+ * with xmldom, which has the former and not the latter.
+ *
+ * @param {string} svgText
+ * @returns {string}
+ */
+export function flattenSvgStyles(svgText) {
+  let doc;
+  try {
+    doc = new DOMParser().parseFromString(svgText, 'image/svg+xml');
+  } catch {
+    return svgText;
+  }
+  const root = doc?.documentElement;
+  // Not an SVG (or a parser-error document): hand the text on untouched so SVGLoader reports
+  // the failure the way it always has.
+  if (!root || root.nodeName !== 'svg') return svgText;
+
+  /** selector → declarations, in source order so a later rule wins as it does in CSS. */
+  const rules = new Map();
+  for (const styleEl of Array.from(root.getElementsByTagName('style'))) {
+    const css = (styleEl.textContent || '').replace(/\/\*[\s\S]*?\*\//g, '');
+    for (const m of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+      const decls = parseDecls(m[2]);
+      if (!Object.keys(decls).length) continue;
+      for (const sel of m[1].split(',').map((x) => x.trim()).filter(Boolean)) {
+        rules.set(sel, Object.assign(rules.get(sel) || {}, decls));
+      }
+    }
+  }
+
+  let touched = false;
+  for (const node of Array.from(root.getElementsByTagName('*'))) {
+    if (node.nodeName === 'style') continue;
+    const decls = {};
+    for (const cls of (node.getAttribute('class') || '').split(/\s+/).filter(Boolean)) {
+      Object.assign(decls, rules.get('.' + cls));
+    }
+    if (node.hasAttribute('id')) Object.assign(decls, rules.get('#' + node.getAttribute('id')));
+    Object.assign(decls, parseDecls(node.getAttribute('style')));
+    for (const [k, v] of Object.entries(decls)) {
+      if (node.getAttribute(k) === v) continue;
+      node.setAttribute(k, v);
+      touched = true;
+    }
+    // Resolved, so it goes. Left in, SVGLoader parses it again on its own — which is exactly
+    // the parse the host policy refuses, one console error per element per parse.
+    if (node.hasAttribute('style')) {
+      node.removeAttribute('style');
+      touched = true;
+    }
+  }
+  for (const styleEl of Array.from(root.getElementsByTagName('style'))) {
+    styleEl.parentNode?.removeChild(styleEl);
+    touched = true;
+  }
+  return touched ? new XMLSerializer().serializeToString(root) : svgText;
+}
+
+/** Every parse goes through the flattener — see `flattenSvgStyles` for why. */
+const loadSvg = (svgText) => new SVGLoader().parse(flattenSvgStyles(svgText));
+
 /**
  * What is in an SVG, before committing to it.
  *
@@ -98,7 +198,7 @@ const CHOSEN_ATTR = 'data-vl-chosen';
 export function describeSvg(svgText) {
   let data;
   try {
-    data = new SVGLoader().parse(svgText);
+    data = loadSvg(svgText);
   } catch {
     return { parts: [], issues: ['This file could not be read as an SVG.'] };
   }
@@ -128,11 +228,14 @@ export function describeSvg(svgText) {
  * Write the import preview's decisions INTO the file, and return the new markup.
  *
  * `choices` is `{ [index]: 'fill' | 'outline' | 'off' }` keyed like `describeSvg`'s parts. Each
- * chosen element gets both the presentation attributes and an inline `style` — the attribute
- * is what a DOM without CSSOM (the headless test) reads, the inline style is what beats a
- * `<style>` block or a class in a real browser — and the root is stamped with
+ * chosen element gets its paint as presentation attributes, and the root is stamped with
  * `data-vl-chosen` so `parseSvg` takes the file at its word. An `off` part is left in place
  * but unpainted and hidden: removing the node would renumber every index behind it.
+ *
+ * Attributes only, no inline `style`. This used to write both, the style being what beat a
+ * `<style>` block or a class in a browser — but the file has been through `flattenSvgStyles`
+ * by now, so there is no block and no class rule left for anything to beat, and a `style`
+ * attribute in the stored markup is one more thing the host policy refuses on every re-parse.
  *
  * The legend is one colour, so `#000` is only "ink"; the carve does not read the value.
  *
@@ -141,12 +244,8 @@ export function describeSvg(svgText) {
  * @returns {string}
  */
 export function applySvgChoices(svgText, choices) {
-  const data = new SVGLoader().parse(svgText);
+  const data = loadSvg(svgText);
   if (!data.xml) return svgText;
-  const own = (node) => (node.getAttribute('style') || '')
-    .split(';')
-    .map((d) => d.trim())
-    .filter((d) => d && !/^(fill|stroke|stroke-width|visibility)\s*:/i.test(d));
   data.paths.forEach((path, index) => {
     const mode = choices[index];
     const node = path.userData.node;
@@ -158,19 +257,14 @@ export function applySvgChoices(svgText, choices) {
       : mode === 'outline'
         ? { fill: 'none', stroke: '#000', 'stroke-width': String(width), visibility: 'visible' }
         : { fill: 'none', stroke: 'none', visibility: 'hidden' };
-    const decls = own(node);
-    for (const [k, v] of Object.entries(set)) {
-      node.setAttribute(k, v);
-      decls.push(`${k}:${v}`);
-    }
-    node.setAttribute('style', decls.join(';'));
+    for (const [k, v] of Object.entries(set)) node.setAttribute(k, v);
   });
   data.xml.setAttribute(CHOSEN_ATTR, '1');
   return new XMLSerializer().serializeToString(data.xml);
 }
 
 export function parseSvg(svgText) {
-  const data = new SVGLoader().parse(svgText);
+  const data = loadSvg(svgText);
   const contours = [];
   const strokeGeoms = [];
   const box = new THREE.Box2(

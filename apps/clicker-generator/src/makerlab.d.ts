@@ -52,6 +52,10 @@ declare module 'virtual:pro-pack' {
   export interface ProDeps {
     /** Where the panel draws itself — an empty div the sidebar already lays out. */
     host: HTMLElement;
+    /** Where the licence call to action draws itself, at the top of the same sidebar, with
+     *  `host` directly under it. Separate from `host` so the shell decides the order: the
+     *  licence is the first thing in the panel and the tools it buys come next. */
+    ctaHost?: HTMLElement;
     /** Current design state, for the run loop's per-row defaults. */
     getState(): {
       importMode: string;
@@ -78,6 +82,16 @@ declare module 'virtual:pro-pack' {
   export interface ProPanel {
     /** Re-read app state (called on every store change). */
     refresh(): void;
+    /**
+     * Announce the shape editor as a paid feature, then gate it. Resolves true only when the
+     * host verified the entitlement.
+     *
+     * The editor is opened from the FREE base-shape picker, so the shell needs a way to reach
+     * the notice and the gate together without importing the paid module. `mount.ts` used to
+     * call `ensureAccess` directly here, which opened the host's payment window with no warning
+     * and no marker — the one paid gesture in the app that ambushed the user.
+     */
+    gateShape(): Promise<boolean>;
     /** Everything this panel put outside its own host element. */
     destroy(): void;
     /** Paid additions to `BuildParams`, merged by the shell on every build. Empty when

@@ -140,12 +140,15 @@ export interface PlateAwareViewer {
  *
  *  `stage` must be a positioned element (the ui-kit's `.vl-stage` is), since the
  *  picker floats in its top-right corner. */
-export function mountPlatePicker(stage: HTMLElement, viewer: PlateAwareViewer): PlatePicker {
+export function mountPlatePicker(stage: HTMLElement, viewer: PlateAwareViewer, onChange?: (choice: PlateChoice) => void): PlatePicker {
   const picker = platePicker({
     value: loadPlateChoice(),
     onChange: (choice) => {
       savePlateChoice(choice);
       viewer.setPlate(choice);
+      // A generator that lays parts out on the plate has to re-pack for the new one; without
+      // this it kept checking "does it fit" against the plate the user had just left.
+      onChange?.(choice);
     },
   });
   stage.append(picker.root);

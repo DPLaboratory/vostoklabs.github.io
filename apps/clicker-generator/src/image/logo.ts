@@ -33,6 +33,60 @@ function parseColor(colorStr: string): RGB {
   }
 }
 
+const isWhite = (color: string | undefined): boolean => {
+  if (!color) return false;
+  const c = color.toLowerCase().replace(/\s/g, '');
+  return c === '#ffffff' || c === '#fff' || c === 'white'
+    || c.startsWith('rgb(255,255,255)') || c.startsWith('rgba(255,255,255,');
+};
+
+/** The artboard size, from the viewBox or the width/height attributes. */
+function viewSize(xml: any): { viewW: number; viewH: number } {
+  let viewW = 0, viewH = 0;
+  if (xml) {
+    const vb = xml.getAttribute('viewBox');
+    if (vb) {
+      const p = vb.split(/[\s,]+/).map(Number);
+      if (p.length === 4) { viewW = p[2]; viewH = p[3]; }
+    } else {
+      viewW = parseFloat(xml.getAttribute('width')) || 0;
+      viewH = parseFloat(xml.getAttribute('height')) || 0;
+    }
+  }
+  return { viewW, viewH };
+}
+
+/**
+ * A rect that spans the whole artboard: the background icon sites paint behind their art.
+ *
+ * Judged on the rect as DRAWN, not on its width/height attributes. Reading the attributes
+ * ignores every transform between the rect and the root, and wrapping the artboard in a
+ * `<g transform="matrix(...)">` is what Figma and Illustrator do on the way out — so a
+ * background rect in a perfectly ordinary export was not recognised, the import wizard offered
+ * it as "Fill", and it was carved as a slab over the design.
+ *
+ * Still rect-only. Any full-bleed SHAPE covering the artboard would catch a solid square logo,
+ * which is a design someone might actually want.
+ */
+function isArtboardRect(
+  node: any,
+  viewW: number,
+  viewH: number,
+  bounds: { x0: number; y0: number; x1: number; y1: number },
+): boolean {
+  if (!node || node.nodeName !== 'rect') return false;
+  const wStr = node.getAttribute('width');
+  const hStr = node.getAttribute('height');
+  if (wStr === '100%' && hStr === '100%') return true;
+  if (!viewW || !viewH) return false;
+  if (Number.isFinite(bounds.x0) && Number.isFinite(bounds.x1)) {
+    // 98%: a background rect is often drawn a hair inside the artboard, or a hair outside it.
+    if ((bounds.x1 - bounds.x0) >= viewW * 0.98 && (bounds.y1 - bounds.y0) >= viewH * 0.98) return true;
+  }
+  // The original attribute test, kept as the fallback for a path with no usable geometry.
+  return Math.abs(parseFloat(wStr) - viewW) < 1 && Math.abs(parseFloat(hStr) - viewH) < 1;
+}
+
 function strokeGeomToContours(geom: THREE.BufferGeometry): Ring[] {
   const pos = geom.getAttribute('position');
   if (!pos) return [];
@@ -75,6 +129,14 @@ export interface SvgPart {
   area: number;
   /** Stroke width in the file's own units, when `kind === 'stroke'`. */
   strokeWidth?: number;
+  /**
+   * Why this part would be dropped, or would print as something nobody asked for, if the
+   * tracer were left to decide on its own — the invisible artboard rectangle icon sites wrap
+   * their art in, or a white shape that is still a shape. Reported so the wizard can show it
+   * as an "Off" the user can flip, rather than a model that came out wrong for no visible
+   * reason.
+   */
+  why?: 'white' | 'artboard';
 }
 
 /** What the import preview decided for one path: how to draw it, and in what colour. */
@@ -116,6 +178,7 @@ export function describeSvg(svgText: string): { parts: SvgPart[]; issues: string
   } catch {
     return { parts: [], issues: ['This file could not be read as an SVG.'] };
   }
+  const { viewW, viewH } = viewSize(data.xml);
   const parts: SvgPart[] = [];
   data.paths.forEach((path: any, index: number) => {
     const style = path.userData?.style || {};
@@ -132,12 +195,18 @@ export function describeSvg(svgText: string): { parts: SvgPart[]; issues: string
     }
     const area = isFinite(x0) ? Math.max(0, (x1 - x0) * (y1 - y0)) : 0;
     const rgb = parseColor(hasFill ? style.fill : hasStroke ? style.stroke : '');
+    const why = isArtboardRect(path.userData?.node, viewW, viewH, { x0, y0, x1, y1 })
+      ? 'artboard' as const
+      : (hasFill && isWhite(style.fill)) || (!hasFill && hasStroke && isWhite(style.stroke))
+        ? 'white' as const
+        : undefined;
     parts.push({
       index,
       kind: hasFill ? 'fill' : hasStroke ? 'stroke' : 'none',
       hex: `#${rgb.map((v) => v.toString(16).padStart(2, '0')).join('')}`,
       area,
       ...(hasStroke && !hasFill ? { strokeWidth: Number(style.strokeWidth) || 1 } : {}),
+      ...(why ? { why } : {}),
     });
   });
 

@@ -15,6 +15,7 @@
  */
 import { el } from '../dom';
 import { withAccess, type ValueRow } from './controls';
+import { colorPopover, type ColorPopoverOption } from './color-popover';
 
 /** Common PLA/PETG shelf colours. Name first, hex second, ordered light-to-dark by family. */
 export const FILAMENTS: ReadonlyArray<readonly [string, string]> = [
@@ -43,6 +44,15 @@ export interface FilamentRowOptions {
   onChange?: (hex: string) => void;
   /** Extra swatches to offer first, e.g. colours a loaded project brought with it. */
   extra?: ReadonlyArray<readonly [string, string]>;
+  /**
+   * DOM id for the label element.
+   *
+   * For an app that renames this row's label at runtime ("Legend" becomes "Legend 1" while a
+   * second one exists). Asked for here rather than found afterwards with a `querySelector` on
+   * `.vl-swatches__label`: that is a dependency on a kit-internal class name, and nothing —
+   * not typecheck, not the drift check — would report it the day the class is renamed.
+   */
+  labelId?: string;
   help?: string;
 }
 
@@ -61,13 +71,37 @@ export function filamentRow(opts: FilamentRowOptions): ValueRow<string> {
   let rowDisabled = false;
 
   const swatches = el('div', { className: 'vl-swatches' });
-  const custom = el('input', {
-    className: 'vl-swatch vl-swatch--custom',
+
+  /* The custom picker.
+   *
+   * A LABEL wearing the colour wheel, with the native `<input type="color">` stretched over it
+   * at zero opacity — not the input itself. Chromium paints the input's current value into its
+   * own `::-webkit-color-swatch` shadow part, which covers any background the element is given,
+   * so a bare input can only ever look like one more chip in the shelf's own colour. Wrapped,
+   * the wheel shows, the input still opens the OS picker on click, and it stays one control. */
+  const customInput = el('input', {
     attrs: { type: 'color', value, 'aria-label': `${opts.label}: custom colour` },
   }) as HTMLInputElement;
+  const custom = el('label', {
+    className: 'vl-swatch vl-swatch--custom',
+    attrs: { title: 'Custom colour' },
+  }, [customInput]);
 
-  const label = el('span', { className: 'vl-swatches__label', text: opts.label });
-  const row = el('div', { className: 'vl-swatch-row' }, [label, swatches]) as unknown as ValueRow<string>;
+  const label = el('span', {
+    className: 'vl-swatches__label',
+    text: opts.label,
+    ...(opts.labelId ? { attrs: { id: opts.labelId } } : {}),
+  });
+
+  /* The picker rides on the label line, not in the shelf grid.
+   *
+   * In the grid it was a fifteenth item in a row of seven, so it sat alone on a third line
+   * under the palette — which is why it used to be hidden unless it held an off-palette value,
+   * and that in turn meant an app whose default is a shelf colour offered no way to reach a
+   * colour the shelf has not got. Beside the label it costs no row, and next to the name of
+   * the thing being coloured it reads as "or pick your own". */
+  const head = el('div', { className: 'vl-swatches__head' }, [label, custom]);
+  const row = el('div', { className: 'vl-swatch-row' }, [head, swatches]) as unknown as ValueRow<string>;
 
   function paint() {
     swatches.replaceChildren();
@@ -84,22 +118,22 @@ export function filamentRow(opts: FilamentRowOptions): ValueRow<string> {
     }
 
     /*
-     * The custom chip appears only when there is an off-palette colour for it to hold.
+     * The picker is always there, on the label line.
      *
-     * It used to sit at the end of every row unconditionally, and at fifteen chips in a
-     * fourteen-column grid that put a lone block on a second row underneath the palette,
-     * painted in the colour that was already ringed above it. It reads as a duplicate of the
-     * selection, and it was reported as one. The escape hatch still cannot be dropped — a
-     * saved project or a shared link can carry any hex, and a picker that could not represent
-     * it would open showing nothing selected — so it appears exactly when it is doing that
-     * job, holding a value the palette has no chip for.
+     * It was conditional once — shown only while it held an off-palette value — because a
+     * fifteenth chip painted in the already-selected colour read as a duplicate of the
+     * selection. That solved the wrong half: it also meant an app whose default is a shelf
+     * colour offered no way to reach a colour the shelf does not carry, which is the entire
+     * reason the escape hatch exists. It paints a colour wheel rather than the current value,
+     * so it reads as "pick your own" instead of a copy of the chip beside it; holding an
+     * off-palette value it shows that colour and takes the selection ring.
      */
-    custom.value = value;
+    customInput.value = value;
     const offPalette = !known.has(value);
     custom.classList.toggle('is-on', offPalette);
-    if (offPalette) swatches.append(custom);
+    custom.style.setProperty('--swatch', offPalette ? value : 'transparent');
 
-    custom.disabled = rowDisabled;
+    customInput.disabled = rowDisabled;
     if (rowDisabled) {
       for (const b of swatches.querySelectorAll('button')) (b as HTMLButtonElement).disabled = true;
     }
@@ -111,7 +145,7 @@ export function filamentRow(opts: FilamentRowOptions): ValueRow<string> {
     if (notify) opts.onChange?.(value);
   }
 
-  custom.addEventListener('input', () => set(custom.value));
+  customInput.addEventListener('input', () => set(customInput.value));
   paint();
 
   row.setValue = (v, notify = false) => set(v, notify);
@@ -122,7 +156,7 @@ export function filamentRow(opts: FilamentRowOptions): ValueRow<string> {
 
      The swatch buttons are rebuilt by `paint()` on every change, so `setDisabled` cannot just
      flip them once: it records the state and `paint()` re-applies it. */
-  withAccess(row, () => value, [custom]);
+  withAccess(row, () => value, [customInput]);
   row.setDisabled = (disabled: boolean) => {
     rowDisabled = disabled;
     row.classList.toggle('vl-control--disabled', disabled);
@@ -189,4 +223,69 @@ export function luminance(hex: string): number {
 export function contrastRatio(a: string, b: string): number {
   const la = luminance(a), lb = luminance(b);
   return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
+}
+
+export interface PaletteRowOptions {
+  label: string;
+  /** `#rrggbb` currently assigned. */
+  value: string;
+  /** Fires on a chip pick and on every step of a custom-wheel drag, so a preview can track. */
+  onChange?: (hex: string) => void;
+  /** What the picker offers. Defaults to the shared filament shelf. */
+  options?: ReadonlyArray<ColorPopoverOption>;
+  /** Fires once with a colour the wheel produced, so an app can remember it. */
+  onCustom?: (hex: string) => void;
+  /** DOM id for the label element, for an app that renames it at runtime. */
+  labelId?: string;
+}
+
+/**
+ * One colour, one line: a name and the chip holding it, which opens the shared picker.
+ *
+ * The compact counterpart to `filamentRow`'s shelf-of-fourteen, and the shape a settings
+ * column actually wants. The shelf costs two rows per colour before the custom chip wraps
+ * onto a third, and at a 264px panel its far end is cut off — which is what "the palette
+ * feels cut off" and "this big palette item that sometimes just disappears" were about in the
+ * clicker. This is one 30px line whatever the shelf holds, and the colours live in a popover
+ * that has room for them.
+ *
+ * Use `filamentRow` where a panel is wide and the whole shelf is worth showing at once; use
+ * this in a sidebar, and for any app with more than one or two colours.
+ */
+export function paletteRow(opts: PaletteRowOptions): ValueRow<string> {
+  let value = norm(opts.value);
+
+  const label = el('span', {
+    className: 'vl-palette-row__label',
+    text: opts.label,
+    ...(opts.labelId ? { attrs: { id: opts.labelId } } : {}),
+  });
+
+  const chip = colorChip({
+    hex: value,
+    label: `${opts.label} colour`,
+    onClick: (e) => {
+      const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+      colorPopover({
+        x: r.left,
+        y: r.bottom + 6,
+        value,
+        options: opts.options,
+        onSelect: (hex) => set(hex),
+        onCustom: opts.onCustom,
+      });
+    },
+  });
+
+  const row = el('div', { className: 'vl-palette-row' }, [label, chip]) as unknown as ValueRow<string>;
+
+  function set(hex: string, notify = true) {
+    value = norm(hex);
+    chip.setValue(value);
+    if (notify) opts.onChange?.(value);
+  }
+
+  row.setValue = (v, notify = false) => set(v, notify);
+  withAccess(row, () => value, [chip]);
+  return row;
 }

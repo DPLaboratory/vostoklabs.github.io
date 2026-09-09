@@ -20,6 +20,11 @@ import { plateSize, type PlateChoice } from '@vostok/plates';
 import type { ClickerPart, RGB } from '../types';
 import { assemblyMinZ, objectKeyOf, objectKeys, place, plateLayout, type Placement } from './plateLayout';
 
+/* Bambu's own cover relationships, verbatim from a 3MF Bambu Studio saved. Bambu Studio
+   and Orca read these, not the OPC thumbnail rel. */
+const BBL_COVER_MID = `${BBL_NS}/cover-thumbnail-middle`;
+const BBL_COVER_SMALL = `${BBL_NS}/cover-thumbnail-small`;
+
 const f = (n: number): string => String(Math.round(n * 1e4) / 1e4);
 
 /** Escape a string for use as XML text/attribute content. */
@@ -74,6 +79,16 @@ export interface ThreeMFOptions {
   /** The bed to lay the model out on. Defaults to the plate picker's shared preference —
    *  the plate the user is looking at is the plate the file is written for. */
   plate?: PlateChoice;
+  /**
+   * A PNG of the design, embedded so the file shows what is in it.
+   *
+   * Without one, every export is a generic icon in the file browser and a blank card in a
+   * slicer's project list — which is exactly how a folder of forty customer orders becomes
+   * unsearchable. Optional: a file with no cover is still a valid 3MF.
+   */
+  coverPng?: Uint8Array;
+  /** The same picture, small, for a slicer's list rows. Falls back to `coverPng`. */
+  coverSmallPng?: Uint8Array;
 }
 
 /** What a plate object is called in the slicer's object list. */
@@ -209,20 +224,40 @@ export function buildThreeMF(parts: ClickerPart[], opts: ThreeMFOptions = {}): U
   const modelSettings =
     `<?xml version="1.0" encoding="UTF-8"?>\n` + `<config>` + objectCfg + `</config>`;
 
+  const cover = opts.coverPng;
+  const coverSmall = opts.coverSmallPng ?? cover;
+
   const contentTypes =
     `<?xml version="1.0" encoding="UTF-8"?>\n` +
     `<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">` +
     `<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>` +
     `<Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/>` +
     `<Default Extension="config" ContentType="text/xml"/>` +
+    (cover ? `<Default Extension="png" ContentType="image/png"/>` : '') +
     `<Override PartName="/Metadata/project_settings.config" ContentType="application/json"/>` +
     `</Types>`;
 
+  /* Three relationships for one picture, because three readers look for it three ways.
+
+     This used to declare only the first, and aimed it at a `Metadata/thumbnail.png` we
+     invented, on the assumption that Bambu Studio and Orca find `plate_1.png` by convention
+     rather than by relationship. They do not, and so the cover never appeared in either. The
+     shape below is copied from a 3MF Bambu Studio wrote itself: the OPC thumbnail rel (what
+     the 3MF spec and Windows' own shell read) aimed at `plate_1.png`, plus Bambu's own two
+     cover rels beside it. One picture, one name, every reader pointed at it. */
   const rels =
-    `<?xml version="1.0" encoding="UTF-8"?>\n` +
+    `<?xml version="1.0" encoding="UTF-8"?>
+` +
     `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">` +
     `<Relationship Target="/3D/3dmodel.model" Id="rel0"` +
     ` Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/>` +
+    (cover
+      ? `<Relationship Target="/Metadata/plate_1.png" Id="rel-thumb"` +
+        ` Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/thumbnail"/>` +
+        `<Relationship Target="/Metadata/plate_1.png" Id="rel-cover-mid" Type="${BBL_COVER_MID}"/>` +
+        `<Relationship Target="/Metadata/plate_1_small.png" Id="rel-cover-small"` +
+        ` Type="${BBL_COVER_SMALL}"/>`
+      : '') +
     `</Relationships>`;
 
   // Human-readable provenance + license text (Layer A: survives casual inspection).
@@ -248,6 +283,9 @@ export function buildThreeMF(parts: ClickerPart[], opts: ThreeMFOptions = {}): U
       'Metadata/model_settings.config': strToU8(modelSettings),
       'Metadata/project_settings.config': strToU8(projectSettings(palette)),
       'Metadata/vostok_labs.txt': strToU8(provenance),
+      ...(cover
+        ? { 'Metadata/plate_1.png': cover, 'Metadata/plate_1_small.png': coverSmall! }
+        : {}),
     },
     { level: 6 },
   );

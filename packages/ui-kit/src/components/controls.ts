@@ -152,6 +152,17 @@ export interface SliderOptions {
   help?: string;
   /** Fired on every drag/type with the clamped, stepped value. */
   onInput?: (value: number) => void;
+  /**
+   * Fired when the user STOPS: pointer released, arrow-key settled, or the value box committed.
+   * `onInput` still fires throughout the drag for the live preview.
+   *
+   * Use this for anything a drag must not do dozens of times. The case that forced it: the
+   * clicker's paid "Mark size" slider ran an entitlement round trip per tick, so one slow drag
+   * fired dozens of `requestAccess` calls for a key the user already owned, and a single
+   * transient refusal silently switched off the mark they had paid for. Same distinction
+   * `textField`'s `onCommit` already draws.
+   */
+  onCommit?: (value: number) => void;
   /** Render the value-box text. Default: the number plus an optional unit. */
   format?: (value: number) => string;
   /** Appended to the default value display, e.g. 'mm'. Ignored if format is set. */
@@ -289,11 +300,15 @@ export function sliderRow(opts: SliderOptions): SliderRowHandle {
   };
 
   range.addEventListener('input', () => commit(Number(range.value), false));
+  // `change` on a range fires once, when the drag ends — which is exactly the "user has decided"
+  // moment `onCommit` is for.
+  range.addEventListener('change', () => opts.onCommit?.(current));
   valBox.addEventListener('change', () => {
     const raw = valBox.value;
     const parsed = firstNumber(raw);
     if (!Number.isFinite(parsed)) return commit(current);
     commit(opts.parse ? opts.parse(parsed, raw) : parsed);
+    opts.onCommit?.(current);
   });
 
   const labelEl = el('label', { text: opts.label });

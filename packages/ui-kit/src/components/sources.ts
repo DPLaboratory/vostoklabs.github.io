@@ -119,6 +119,12 @@ export function dropZone(opts: DropZoneOptions): HTMLElement {
   root.addEventListener('dragleave', () => root.classList.remove('is-over'));
   root.addEventListener('drop', (e) => {
     e.preventDefault();
+    /* Stop here. A zone that has taken a drop owns it: `onFiles` is required, so there is
+       never a caller waiting for the event further up. Without this the clicker's window-level
+       drop handler (its catch-all for files dropped anywhere on the page) ALSO received a logo
+       dropped on the Seller tools' zone and imported it as the main design, so one drop opened
+       two import wizards — the second of them replacing the user's artwork with their logo. */
+    e.stopPropagation();
     root.classList.remove('is-over');
     emit((e as DragEvent).dataTransfer?.files ?? null);
   });

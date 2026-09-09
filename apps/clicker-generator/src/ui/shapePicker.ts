@@ -55,6 +55,10 @@ export interface ShapePickerOptions {
   onArmPct(v: number): void;
   /** The way out, into the 2-D editor. */
   onDrawYourOwn(): void;
+  /** Pill on the editor button when the editor is paid in this build. Undefined leaves it
+   *  unmarked, which is correct for the public build where the editor is not in the bundle at
+   *  all and for an account that has already bought the licence. */
+  paidBadge?: string;
   onClose?(): void;
 }
 
@@ -65,6 +69,11 @@ export function openShapePicker(opts: ShapePickerOptions): DrawerHandle {
 
   const body = document.createElement('div');
   const knobs = document.createElement('div');
+  /* The knob rows arrive as bare kit rows with no separation of their own, so a Points stepper
+     and a Sharpness slider ended up touching: two labels, two controls and no air between the
+     pairs, which reads as one four-part control rather than two. Spacing belongs on the
+     CONTAINER rather than on the rows, because the rows are rebuilt on every pick. */
+  knobs.className = 'cg-pick__knobs';
 
   for (const group of shapeGroups()) {
     const groupTiles = group.shapes.map((sh) => {
@@ -171,7 +180,18 @@ export function openShapePicker(opts: ShapePickerOptions): DrawerHandle {
       label: 'Draw your own shape…',
       emphasis: 'secondary',
       block: true,
-      title: 'Open the 2-D editor to change this shape, or draw one from scratch',
+      // The marker, in the builds where the editor costs money. Without it this button was the
+      // only paid gesture in the app that looked free right up until the host's payment window
+      // opened over it. `opts.paidBadge` is undefined in the public build (the caller only sets
+      // it under MAKERLAB), so no pill and no promise of a purchase that cannot happen there.
+      badge: opts.paidBadge,
+      // Quieter while unpaid, the same treatment the Seller tools panel wears. Still clickable:
+      // the editor opens, announces the charge and gates at the commit, so nothing is taken away
+      // that was not already behind the wall.
+      className: opts.paidBadge ? 'vl-btn--locked' : undefined,
+      title: opts.paidBadge
+        ? 'Open the 2-D editor to change this shape, or draw one from scratch. Part of the lifetime commercial licence.'
+        : 'Open the 2-D editor to change this shape, or draw one from scratch',
       onClick: () => {
         handle.close();
         opts.onDrawYourOwn();

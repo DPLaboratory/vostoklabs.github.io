@@ -27,6 +27,17 @@ const bytes = buildThreeMF(parts as any);
 
 const files = unzipSync(bytes);
 const names = Object.keys(files);
+const relsNoCover = strFromU8(files['_rels/.rels']);
+
+// The same file again, this time with a cover image. Not a real PNG — nothing here decodes
+// it, and what is being tested is that the bytes reach the package under both names with
+// the relationship and the content type that make them findable.
+const fakePng = new TextEncoder().encode('PNG-BYTES-STAND-IN');
+const fakeSmallPng = new TextEncoder().encode('SMALL-PNG-STAND-IN');
+const coverFiles = unzipSync(buildThreeMF(parts as any, { coverPng: fakePng }));
+const coverNames = Object.keys(coverFiles);
+const relsCover = strFromU8(coverFiles['_rels/.rels']);
+const typesCover = strFromU8(coverFiles['[Content_Types].xml']);
 const model = strFromU8(files['3D/3dmodel.model']);
 const settings = strFromU8(files['Metadata/model_settings.config']);
 
@@ -93,6 +104,38 @@ const checks: [string, boolean][] = [
   ['Designer metadata', /<metadata name="Designer">Vostok Labs<\/metadata>/.test(model)],
   ['vl namespace declared', /xmlns:vl="/.test(model)],
   ['has Metadata/vostok_labs.txt', names.includes('Metadata/vostok_labs.txt')],
+  // A file with no cover is still a valid 3MF, and must not gain a png content type or a
+  // thumbnail relationship pointing at a part that is not there.
+  ['no cover means no thumbnail part', !names.includes('Metadata/plate_1.png')],
+  ['no cover means no thumbnail relationship', !/metadata\/thumbnail/i.test(relsNoCover)],
+  ['no cover means no Bambu cover relationship', !/cover-thumbnail/i.test(relsNoCover)],
+  /* With a cover: one image under one name, aimed at by all three relationships a reader
+     might look through. The earlier shape wrote the bytes twice, as an invented
+     `Metadata/thumbnail.png` for the OPC relationship and as `Metadata/plate_1.png` on the
+     assumption that Bambu Studio finds that by convention. It does not — it reads its own
+     two cover relationships, which were not there, so the cover never appeared in Bambu or
+     Orca and the file carried the picture twice for nothing. The names and relationship
+     types below are copied from a 3MF Bambu Studio saved itself. */
+  ['cover written as Metadata/plate_1.png', coverNames.includes('Metadata/plate_1.png')],
+  ['cover not written twice', !coverNames.includes('Metadata/thumbnail.png')],
+  ['cover bytes survive the zip intact',
+    strFromU8(coverFiles['Metadata/plate_1.png']) === strFromU8(fakePng)],
+  ['small cover falls back to the full-size one when not supplied',
+    strFromU8(coverFiles['Metadata/plate_1_small.png']) === strFromU8(fakePng)],
+  ['small cover used when supplied',
+    strFromU8(
+      unzipSync(buildThreeMF(parts as any, { coverPng: fakePng, coverSmallPng: fakeSmallPng }))[
+        'Metadata/plate_1_small.png'
+      ],
+    ) === strFromU8(fakeSmallPng)],
+  ['OPC thumbnail relationship aimed at plate_1.png',
+    /Target="\/Metadata\/plate_1\.png"[^>]*relationships\/metadata\/thumbnail/.test(relsCover)],
+  ['Bambu middle cover relationship declared',
+    /Target="\/Metadata\/plate_1\.png"[^>]*cover-thumbnail-middle/.test(relsCover)],
+  ['Bambu small cover relationship declared',
+    /Target="\/Metadata\/plate_1_small\.png"[^>]*cover-thumbnail-small/.test(relsCover)],
+  ['png declared in [Content_Types].xml',
+    /<Default Extension="png" ContentType="image\/png"\/>/.test(typesCover)],
 ];
 
 let ok = true;

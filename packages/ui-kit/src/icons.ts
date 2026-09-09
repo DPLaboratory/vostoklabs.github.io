@@ -27,6 +27,16 @@ export const ICONS = {
   close: stroke('<path d="M18 6 6 18"/><path d="m6 6 12 12"/>'),
 
   // Directional pad + transport (arrows are heavier so they read at a glance).
+  /* Chevrons, for a pad where the arrows are a nudge rather than a jump. Lighter than the
+     full arrows above at the same size, which is what keeps a 30px cell from reading as a
+     block of ink. */
+  chevronUp: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg>',
+  chevronDown: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>',
+  chevronLeft: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>',
+  chevronRight: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>',
+  /* "Back to the middle": a plain dot, not a crosshair. The centre of a nudge pad is a
+     destination, and a target reticle reads as an instruction to aim at something. */
+  dot: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/></svg>',
   arrowUp: stroke('<path d="M12 19V5"/><path d="m5 12 7-7 7 7"/>', 22),
   arrowDown: stroke('<path d="M12 5v14"/><path d="m19 12-7 7-7-7"/>', 22),
   arrowLeft: stroke('<path d="M19 12H5"/><path d="m12 19-7-7 7-7"/>', 22),

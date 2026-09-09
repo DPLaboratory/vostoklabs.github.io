@@ -53,6 +53,13 @@
   /* The one spinner period. */
   --dur-spin: 1s;
 
+  /* An attention sweep: slow, and slow on purpose. This is the tier for a thing that draws the
+     eye on its own rather than answering a gesture, so it is an order of magnitude longer than
+     a hover and it is the only tier that repeats. One user of it today, the `cta` button's
+     sheen. Reduced motion removes it entirely rather than shortening it: an idle animation has
+     no feedback role to preserve, so there is nothing left to keep. */
+  --dur-attention: 6000ms;
+
   /* ---------------------------------------------------------------------- easings */
 
   /* The workhorse — roughly 80% of transitions. Anything on screen both before and after

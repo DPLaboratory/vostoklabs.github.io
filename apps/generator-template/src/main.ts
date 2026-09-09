@@ -20,7 +20,7 @@ import {
   sliderRow,
   toggleSwitch,
   button,
-  changelogButton,
+  panelCredit,
   toast,
   dialog,
   openLicenseModal,
@@ -412,15 +412,19 @@ const shell = appShell({
       generatorHeader({
         title: 'My Generator',
         description: 'One line on what it makes and who it is for.',
+        // The byline lives in the credit strip pinned at the foot of this panel (below), so
+        // it is not the most prominent thing on first load — a MakerWorld review note.
+        hideCredit: true,
       }),
       ...(quality ? [quality] : []),
       shapeSection,
       detailSection,
-      // The Updates drawer, under the last section rather than in the sticky footer. Keep
-      // `src/changelog.ts` current as you ship: it is how someone who wrote in about a bug
-      // finds out that the fix landed.
-      changelogButton({ entries: CHANGELOG }),
     ],
+    // Pinned under the scroll, not in it: "Made by Vostok Labs" in small type with the
+    // Updates drawer beside it — a signature, not a step in the workflow. Keep
+    // `src/changelog.ts` current as you ship: it is how someone who wrote in about a bug
+    // finds out that the fix landed.
+    credit: panelCredit({ title: 'My Generator', updates: { entries: CHANGELOG, title: 'Updates' } }),
   },
   stage: [
     stageCanvas,

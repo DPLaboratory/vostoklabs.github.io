@@ -74,7 +74,7 @@ function makerlabPlugin(enabled: boolean) {
         // exists so the module graph resolves.
         return [
           'export function mountProFeatures() {',
-          '  return { refresh() {}, destroy() {}, paramsPatch: () => ({}) };',
+          '  return { refresh() {}, gateShape: async () => false, destroy() {}, paramsPatch: () => ({}) };',
           '}',
         ].join('\n');
       }
@@ -136,7 +136,14 @@ export default defineConfig(({ mode }) => ({
     the app.
   */
   define: {
-    __SHAPE_EDITOR__: JSON.stringify(mode === 'development' || mode === 'internal'),
+    /* `makerworld` is here because the editor is part of what the Lifetime Commercial Licence
+       buys. The flag only decides whether the editor EXISTS in a bundle; whether it opens is a
+       separate `ensureAccess` check in mount.ts, because a compile-time literal cannot know
+       who paid. Off for the plain public build, so the editor is absent there rather than
+       hidden — see the note above. */
+    __SHAPE_EDITOR__: JSON.stringify(
+      mode === 'development' || mode === 'internal' || mode === 'makerworld',
+    ),
   },
   worker: {
     format: 'es' as const,

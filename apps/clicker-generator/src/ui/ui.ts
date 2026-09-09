@@ -3,7 +3,6 @@ import {
   button,
   type ButtonHandle,
   buttonRow,
-  changelogButton,
   colorChip,
   dialog,
   helpTip,
@@ -21,6 +20,7 @@ import {
   segmentedControl,
   type SegmentedRow,
   setFieldOptions,
+  panelCredit,
   sidebarFooter,
   sampleGrid,
   type SampleGridHandle,
@@ -29,7 +29,7 @@ import {
   makeCollapsible,
   toast,
 } from '@vostok/ui-kit';
-import { MAKERLAB } from 'virtual:makerlab';
+import { MAKERLAB, SELLER_PACK, isUnlocked } from 'virtual:makerlab';
 import type { BaseShapeKind, BlockOrientation, BlockSlot, KeychainSide, EditMode, EdgeSetting, EdgeStyle, KeychainParams, PaletteEntry, SwitchPlacement, ViewMode, RGB } from '../types';
 import { FILAMENTS } from '../types';
 import type { SectionAxis } from '../viewer/viewer';
@@ -112,6 +112,12 @@ export interface UiState {
   removeBg: boolean;
   view: ViewMode;
   showSwitch: boolean;
+  /** Whether the preview is cut open. Independent of `view`. */
+  sectionOn: boolean;
+  /** Which axis the cut runs along. Viewport state: never saved, never undone. */
+  sectionAxis: SectionAxis;
+  /** Where the section cut sits, -1..1 across the model's own bounding box (0 = middle). */
+  sectionPos: number;
   /** 'blocks' = the letter-block chain (one block + switch + keycap per letter). */
   importMode: 'image' | 'svg' | 'icon' | 'text' | 'blocks';
   currentIconName: string;
@@ -249,6 +255,8 @@ export interface UiCallbacks {
   onRemoveBg(on: boolean): void;
   onView(mode: ViewMode): void;
   onShowSwitch(on: boolean): void;
+  /** Turn the cut on or off. Separate from `onView` — the two are unrelated questions. */
+  onSectionEnabled(on: boolean): void;
   onSection(axis: SectionAxis, pos: number): void;
   onExport(): void;
   onRenderPng(): void;
@@ -463,6 +471,9 @@ export function createUi(
   const headerEl = generatorHeader({
     title: 'Clicker Generator',
     description: 'Generate printable 3D model of a clicker from an image',
+    // The byline lives in the credit strip pinned at the foot of this panel (panelCredit,
+    // below). Saying "Made by Vostok Labs" at both ends of one column is one time too many.
+    hideCredit: true,
   });
 
   // The quality callout links to an external MakerWorld page — suppress when embedded
@@ -476,18 +487,33 @@ export function createUi(
   // body — mirroring the right sidebar — so the MakerLab credit block can pin to the
   // bottom-left corner instead of scrolling away with the controls (see below).
   //
-  // `#proMount` near the bottom is an anchor and nothing else: in the MakerWorld build
-  // mount.ts fills it, and in every other build it stays an empty div. The explanation lives
+  // `#licenceCtaMount` and `#proMount` are anchors and nothing else: in the MakerWorld build
+  // mount.ts fills them, and in every other build they stay empty divs. The explanation lives
   // here rather than as an HTML comment inside the string, because a comment in a template
   // literal survives minification verbatim — the first version of it shipped the name of an
   // unreleased feature into the public bundle's DOM.
+  //
+  // The licence is first in the panel because what it sells is the licence, not a control,
+  // and the Seller tools sit directly under it because they are what the licence buys.
+  // `#proMount` used to be the LAST thing in the panel, below every collapsed geometry
+  // section; the MakerLab review of the seller update (2026-09-07) called that "easy to
+  // miss", and a paid feature nobody finds is a refund. Offer and product, one after the
+  // other, above the fold.
   const leftScroll = document.createElement('div');
   leftScroll.className = 'vl-panel__scroll';
   leftScroll.innerHTML = `
+    <div id="licenceCtaMount"></div>
+    <div id="proMount"></div>
+
     <div class="section" id="previewViewSection">
       <span class="label">Preview &amp; view</span>
       <div id="viewTabsMount" style="margin-bottom: 12px;"></div>
       <div id="showSwitchMount"></div>
+      <div id="sectionToggleMount"></div>
+      <div id="sectionOpts" hidden>
+        <div class="prow-stacked"><div id="sectionAxisMount"></div></div>
+        <div class="prow-stacked"><div id="sectionPosMount"></div></div>
+      </div>
     </div>
 
     <!-- Letter blocks: the shape controls for the chain live here, next to the preview,
@@ -634,13 +660,6 @@ export function createUi(
         </div>
         </div>
       </details>
-
-      <!-- The Updates drawer, under the last section rather than in the sticky footer: it is
-           read once in a while, and should not compete with the controls that are on screen
-           the whole time. Same placement as the fold-up box generator. -->
-      <div id="proMount"></div>
-
-      <div id="updatesMount"></div>
     </div>
 
     <div class="sidebar-sticky-footer">
@@ -653,18 +672,31 @@ export function createUi(
   sidebarLeft.innerHTML = '';
   sidebarLeft.append(leftScroll);
 
-  if (MAKERLAB) {
-    // MakerWorld review feedback (2026-07-27): the Vostok Labs intro block is the most
-    // prominent thing in the embed on first load, and the host would rather off-platform
-    // promotion not sit in that spot. In the MakerLab build it moves to the BOTTOM-LEFT
-    // — pinned below the scroll area — and is demoted to a compact muted credit line
-    // (.kc-credit-block in style.css). The host page already shows the app's name, so
-    // the top-of-sidebar heading isn't needed here. Public build keeps it up top.
-    headerEl.classList.add('kc-credit-block');
-    sidebarLeft.append(headerEl);
-  } else {
+  // MakerWorld review feedback (2026-07-27): the Vostok Labs intro block was the most
+  // prominent thing in the embed on first load, and the host would rather off-platform
+  // promotion did not sit in that spot. The answer was a compact credit line pinned to the
+  // bottom-left — and it turned out to be the better shape in both builds, so the byline now
+  // lives down there always and the embedded build simply drops the intro header. The host
+  // page already shows the app's name, so nothing is lost there.
+  if (!MAKERLAB) {
     leftScroll.prepend(...(qualityEl ? [headerEl, qualityEl] : [headerEl]));
   }
+
+  // The credit strip: who made this, and what changed. Appended to the panel rather than to
+  // `leftScroll`, so it is OUTSIDE `.vl-panel__scroll` and stays pinned instead of scrolling
+  // away with the controls.
+  //
+  // This was `headerEl` with a local `.kc-credit-block` class demoting it by hand — a title
+  // shrunk, a subtitle hidden and four colours restated, in app CSS. That demotion is now the
+  // kit's `panelCredit()`, so it is a component the next generator gets by name rather than a
+  // class ladder it has to remember (invariant #9). Updates rides in the strip for the same
+  // reason it does in the keycap generator: it is the answer to "has my bug been fixed", a
+  // question people ask rather than one to interrupt them with, and a full-width button among
+  // the controls made it look like a step in the workflow.
+  sidebarLeft.append(panelCredit({
+    title: 'Clicker Generator',
+    updates: { entries: CHANGELOG, title: 'Clicker updates' },
+  }));
 
   // Populate Right Sidebar (Input Modes & Export)
   sidebarRight.innerHTML = '';
@@ -757,7 +789,11 @@ export function createUi(
   rightScroll.appendChild(projFileInput);
 
   const rightFooter = sidebarFooter({
-    hostOwnsProjects: cb.hostOwnsProjects,
+    // Also true in the MakerLab embed, where nobody owns them: the sandbox has downloads off,
+    // so Save would produce nothing and Load has nothing to read back. The kit then draws
+    // only the theme toggle. This used to be done by removing "the first action row" after
+    // the fact, and when the kit folded its two rows into one that took Light mode with it.
+    hostOwnsProjects: MAKERLAB || cb.hostOwnsProjects,
     formats: [{ id: '3mf', label: '3MF' }],
     onExport: () => cb.onExport(),
     onSave: () => cb.onSaveProject(),
@@ -772,10 +808,6 @@ export function createUi(
     },
     themeStorageKey: 'clicker_theme',
   });
-
-  if (MAKERLAB) {
-    rightFooter.querySelector('.vl-action-row')?.remove();
-  }
 
   // Wrapper the Raise/Edges panels dock into (see their construction below): a
   // `position: relative` box around just the scroll area, so a docked panel can cover it
@@ -1754,6 +1786,12 @@ export function createUi(
           onCornerPct: (v) => cb.onShapeCorner(v),
           onArmPct: (v) => cb.onShapeArm(v),
           onDrawYourOwn: () => cb.onEditShape(),
+          /* The paid pill, and only where it is true. In the public build `MAKERLAB` is false
+             (and the editor is not in the bundle at all, so this button is not drawn either);
+             once the licence is bought the pill would be telling an owner to buy something
+             they own, so it goes. `isUnlocked` is presentation, which is exactly what a pill
+             is — the real gate is `gateShape()` on the way in. */
+          paidBadge: MAKERLAB && !isUnlocked(SELLER_PACK) ? 'Pro' : undefined,
         });
       });
     },
@@ -1916,11 +1954,6 @@ export function createUi(
     onInput: (v) => cb.onSocketFit(v),
   });
   $('socketFitMount').append(socketFitRow);
-
-  // What used to open itself on load, telling first-time visitors what had changed "since your
-  // last visit". It is the answer to "has my bug been fixed", so it is worth keeping — but it is
-  // a question people ask, not one to interrupt them with.
-  $('updatesMount').append(changelogButton({ entries: CHANGELOG, title: 'Clicker updates' }));
 
   /* --- The two directional pads ---
 
@@ -2104,6 +2137,46 @@ export function createUi(
     onChange: (v) => cb.onView(v),
   });
   $('viewTabsMount').append(viewTabs);
+
+  /* The cut through the model.
+     It is a switch of its own rather than a third view tab. As a tab it competed with
+     Assembled/Exploded — two unrelated questions ("how is it arranged" and "do I want to see
+     inside") sharing one control, so looking inside cost you the arrangement. Now either view
+     can be cut.
+     Axis and position are viewport state, so they are deliberately absent from HISTORY_FIELDS
+     and from a saved project, exactly like `view` and `showSwitch`: what a project reproduces
+     is a model, not a camera. */
+  const sectionToggle = toggleSwitch({
+    label: 'Cut it open',
+    help: 'Slices the preview so you can see the switch sitting inside the body. Preview only — it never changes the model or the exported file.',
+    checked: initial.sectionOn,
+    onChange: (v) => cb.onSectionEnabled(v),
+  });
+  $('sectionToggleMount').append(sectionToggle);
+
+  const sectionAxisCtl = segmentedControl<SectionAxis>({
+    label: 'Cut along',
+    options: [
+      { value: 'x', label: 'X' },
+      { value: 'y', label: 'Y' },
+      { value: 'z', label: 'Z' },
+    ],
+    value: initial.sectionAxis,
+    onChange: (v) => cb.onSection(v, sectionPosRow.getValue() / 100),
+  });
+  $('sectionAxisMount').append(sectionAxisCtl);
+
+  const sectionPosRow = sliderRow({
+    label: 'Cut position',
+    help: 'Slides the cut through the model so you can see the switch sitting inside the body before you print it. The cut is preview only and is never exported.',
+    min: -100,
+    max: 100,
+    step: 2,
+    value: Math.round(initial.sectionPos * 100),
+    unit: '%',
+    onInput: (v) => cb.onSection(sectionAxisCtl.getValue(), v / 100),
+  });
+  $('sectionPosMount').append(sectionPosRow);
 
   const showSwitchToggle = toggleSwitch({
     label: 'Show MX switch',
@@ -2627,6 +2700,10 @@ export function createUi(
     // comparison was false for every tab and it stripped `.active` off all of them — the
     // label kept `--muted` grey while the indicator pill painted accent behind it, 1.03:1.
     viewTabs.setValue(state.view);
+    sectionToggle.setValue(state.sectionOn);
+    $('sectionOpts').hidden = !state.sectionOn;
+    sectionAxisCtl.setValue(state.sectionAxis);
+    sectionPosRow.setValue(Math.round(state.sectionPos * 100));
 
     // The export button lives in the ui-kit sidebar footer now; guard in case it
     // isn't present. cb.onExport() also no-ops when there are no parts.

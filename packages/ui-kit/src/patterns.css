@@ -23,7 +23,7 @@ details.vl-section--collapsible > summary {
   align-items: center;
   gap: 8px;
   margin-bottom: 0;
-  padding: 22px 0;
+  padding: 18px 0;
   list-style: none;
   cursor: pointer;
   user-select: none;
@@ -67,7 +67,26 @@ details.vl-section--collapsible[open] > summary {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding-bottom: 22px;
+  padding-bottom: 16px;
+}
+
+/* A collapsible INSIDE a section body — a "Fine tune" fold — is a row, not a section: a
+   compact summary, and when open a body with no padding of its own, so a closed fold is one
+   line tall and an open one ends where its last row does. Every generator had 40–60 px of
+   dead space under each fold before this. */
+.vl-section__body details.vl-section--collapsible,
+.vl-app .vl-section__body details.vl-section--collapsible {
+  border-top: none;
+}
+.vl-section__body details.vl-section--collapsible > summary {
+  padding: 6px 0;
+  font-size: var(--control-fs, 1em);
+}
+.vl-section__body details.vl-section--collapsible[open] > summary {
+  padding-bottom: 10px;
+}
+.vl-section__body details.vl-section--collapsible .vl-section__body {
+  padding-bottom: 4px;
 }
 
 /* Inside a panel, `.vl-app .vl-section` (0,2,0) outranks the bare
@@ -671,4 +690,278 @@ details.vl-section--collapsible[open] > summary {
 }
 .vl-collapse[data-closed] {
   grid-template-rows: 0fr;
+}
+
+/* ---------------------------------------------------------------- nudge pad --
+
+   A d-pad and the two numbers it drives, side by side. See `nudgePad()` for why they are
+   one control rather than two that happen to sit together. */
+.vl-nudge {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+/* Compact cells, because this pad shares its row with the two numbers it drives — and it has
+   no rotate corners, so a 3x3 of 30px squares is the whole control. These are the measurements
+   the keycap generator's own pad shipped with; the pad was lifted into the kit rather than
+   redrawn, so they came with it. */
+.vl-dpad--compact {
+  grid-template-columns: repeat(3, 30px);
+  grid-template-rows: repeat(3, 30px);
+  gap: 3px;
+  flex: 0 0 auto;
+}
+.vl-dpad--compact .vl-dpad-btn {
+  background: var(--panel);
+  border-radius: var(--radius-btn);
+}
+/* The standalone pad's centre is a dashed circle — a target you drop something back onto. At
+   this size that reads as a broken cell in a row of solid ones, so the compact pad keeps the
+   same square as its neighbours and says "middle" with the dot alone. */
+.vl-dpad--compact .vl-dpad-btn--center {
+  border-style: solid;
+  border-radius: var(--radius-btn);
+}
+.vl-dpad--compact .vl-dpad-btn svg { width: 17px; height: 17px; }
+/* No press-scale on a repeat-fire button: held down, a pad that shrinks on every tick
+   flickers. The background shift is the press feedback here. */
+.vl-dpad--compact .vl-dpad-btn:active { transform: none; background: var(--panel-2); }
+.vl-dpad--compact .vl-dpad-btn:focus-visible { border-color: var(--accent); }
+
+/* The two numbers, to the right of the pad and filling what is left of the row. */
+.vl-nudge__vals {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: grid;
+  gap: 7px;
+}
+/* Fixed axis letter, elastic field, fixed unit — so both rows line up whatever the numbers
+   are, which a flex row of three would not do. */
+.vl-nudge__val {
+  display: grid;
+  grid-template-columns: 14px 1fr 20px;
+  align-items: center;
+  gap: 7px;
+}
+.vl-nudge__axis {
+  color: var(--muted);
+  font-size: var(--fs-small);
+}
+.vl-nudge__num {
+  min-width: 0;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  color: var(--text);
+  border-radius: var(--radius-btn);
+  padding: 4px 5px;
+  font: inherit;
+  /* A step below the control size on purpose: this pair sits inside a settings column beside
+     a 30px pad, and at the field size the row is taller than the pad it belongs to. */
+  font-size: 14px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.vl-nudge__num:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+  border-color: var(--accent);
+}
+.vl-nudge__unit {
+  color: var(--muted);
+  font-size: var(--fs-micro);
+}
+.vl-control--disabled .vl-nudge__num { opacity: var(--opacity-disabled, .45); }
+
+/* ---------------------------------------------------------------- busy chip --
+
+   The "working on it" pill that floats over a stage, with a spinner and, for a batch that
+   can be stopped, a Cancel. See `busyChip()`. */
+.vl-busy {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 5px 6px 5px 12px;
+  border-radius: var(--radius-pill);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-toast);
+  color: var(--text);
+  font-size: var(--fs-small);
+  animation: vl-busy-in var(--dur-in-sm) var(--ease-standard);
+}
+/* `display: flex` above outranks root.css's [hidden] patch. */
+.vl-busy[hidden] { display: none; }
+@keyframes vl-busy-in {
+  from { opacity: 0; transform: translate(-50%, -4px); }
+  to   { opacity: 1; transform: translate(-50%, 0); }
+}
+.vl-busy__spinner {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 12px;
+  border-radius: 50%;
+  border: 2px solid var(--line);
+  border-top-color: var(--accent);
+  animation: vl-spin var(--dur-spin) var(--ease-linear) infinite;
+}
+/* One line: a progress count ("14/26") arriving mid-run must not wrap the chip in two. */
+.vl-busy__text { white-space: nowrap; }
+.vl-busy__cancel:empty { display: none; }
+.vl-busy__cancel-btn { padding: 3px 10px; font-size: var(--fs-micro); }
+/* Reduced motion takes the movement, not the feedback: the chip still appears and the ring
+   still reads as busy, it just stops turning. */
+@media (prefers-reduced-motion: reduce) {
+  .vl-busy, .vl-busy__spinner { animation: none; }
+}
+:root[data-motion='reduced'] .vl-busy,
+:root[data-motion='reduced'] .vl-busy__spinner { animation: none; }
+
+/* ------------------------------------------------------------- panel credit --
+
+   The pinned strip at the foot of a settings panel: who made this, and what changed.
+   See `panelCredit()`. Mount it OUTSIDE `.vl-panel__scroll` or it scrolls away. */
+.vl-panel-credit {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  flex: 0 0 auto;
+  padding: 9px 16px 11px;
+  border-top: 1px solid var(--line);
+  background: var(--panel);
+}
+.vl-panel-credit__text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+/* Wraps rather than ellipsising: a generator's name cut mid-word reads as a bug, and the
+   strip is pinned to the bottom of a column with room for a second line. The display face is
+   the point — this line was a `.vl-app-title` before it was lifted into the kit, and losing
+   the face is what made the strip read as a caption rather than a signature. */
+.vl-panel-credit__title {
+  font-family: var(--font-display);
+  font-size: var(--fs-small);
+  font-weight: 600;
+  letter-spacing: .2px;
+  color: var(--muted);
+}
+.vl-panel-credit .vl-app-credit {
+  /* 11.5px, not the 11px token: this is the size the strip shipped at, and half a pixel
+     is the difference between a byline under a name and a caption. */
+  font-size: 11.5px;
+  margin: 0;
+}
+.vl-panel-credit .vl-credit-link { color: var(--muted); }
+.vl-panel-credit .vl-credit-link:hover { color: var(--accent); }
+.vl-panel-credit .vl-credit-logo { width: 12px; height: 12px; flex: 0 0 12px; }
+/* Sizing only. It is a `secondary` button and has to read as one — a hairline border and the
+   body colour — so nothing here touches colour: a `color: var(--muted)` at this specificity
+   beats `.vl-btn`'s own and turns it back into a caption, which is how it came to look like
+   plain text in the first place. */
+.vl-panel-credit__updates {
+  flex: 0 0 auto;
+  padding: 6px 11px;
+  font-size: var(--fs-small);
+}
+.vl-panel-credit__updates svg { width: 14px; height: 14px; }
+
+/* ---------------------------------------------------- the SVG import wizard (openSvgImport)
+   Two panes, not one column. Stacked — previews, note, then a parts list with its own
+   scrollbar inside a dialog that had one too — the window came out about 820px tall inside a
+   760px box, so it scrolled, and the scroll hid the very thing it exists to show. Side by side
+   the same content is ~360px. See `components/svg-import.ts`. */
+.vl-svgprev {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.vl-svgprev__pane { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.vl-svgprev__panels { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.vl-svgprev__panel { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+
+.vl-svgprev__caption {
+  color: var(--muted);
+  font-size: 13px;
+  font-family: var(--font-display);
+  letter-spacing: 0.02em;
+}
+
+/* A checkerboard, so a white logo on a white ground is still visible — the case where
+   "nothing imported" and "it imported and is white" look identical. */
+.vl-svgprev__art {
+  /* Height, not aspect-ratio. A square sized off the column width is what made this window
+     taller on a WIDER screen, which is backwards. */
+  height: min(220px, 26vh);
+  display: grid;
+  place-items: center;
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background-color: var(--panel);
+  background-image:
+    linear-gradient(45deg, var(--line) 25%, transparent 25%),
+    linear-gradient(-45deg, var(--line) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, var(--line) 75%),
+    linear-gradient(-45deg, transparent 75%, var(--line) 75%);
+  background-size: 14px 14px;
+  background-position: 0 0, 0 7px, 7px -7px, -7px 0;
+  color: var(--text);
+  /* Belt and braces behind the rule below: whatever an uploaded file's intrinsic size turns
+     out to be, it is clipped to the panel rather than painted over the dialog. */
+  overflow: hidden;
+}
+
+/* `min-width`/`min-height` explicitly zero, not just a max.
+   A grid item's automatic minimum size is its CONTENT size, and in CSS a minimum beats a
+   maximum — so an <img> whose intrinsic box is bigger than this one ignored `max-height: 100%`
+   and spilled straight over the rounded border. Invisible for as long as the art box was a
+   346px square (almost nothing is bigger than that); immediate once the box was bounded to fit
+   the screen. `object-fit` then does the scaling that `max-height` was being asked to do. */
+.vl-svgprev__art img,
+.vl-svgprev__art svg {
+  width: 100%; height: 100%;
+  min-width: 0; min-height: 0;
+  object-fit: contain;
+}
+
+.vl-svgprev__empty { color: var(--muted); font-size: 13px; text-align: center; margin: 0; }
+.vl-svgprev__note { margin: 0; font-size: 13px; color: var(--muted); }
+.vl-svgprev__note--warn { color: var(--warn); }
+
+/* The one thing here that can still scroll, and only past about ten parts. Bounded in VH so it
+   shrinks with the screen instead of pushing the dialog off it — a dialog that scrolls AND
+   contains a scrolling list is the shape this window used to have. */
+.vl-svgprev__parts {
+  display: flex; flex-direction: column; gap: 4px;
+  max-height: min(360px, 44vh); overflow-y: auto;
+  scrollbar-width: thin; scrollbar-color: var(--line) transparent;
+}
+.vl-svgprev__parts::-webkit-scrollbar { width: 8px; }
+.vl-svgprev__parts::-webkit-scrollbar-thumb { background: var(--line); border-radius: 4px; }
+
+/* [swatch ·] what the file did · what we will do. The picker is the decision, so it gets the
+   fixed width; the description takes what is left and ellipsises. */
+.vl-svgprev__part { display: flex; align-items: center; gap: 10px; font-size: 13px; }
+.vl-svgprev__what {
+  flex: 1; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  color: var(--muted);
+}
+.vl-svgprev__mode { flex: 0 0 230px; }
+
+/* Below the two-pane width the panes stack, and everything shrinks to match — the same
+   content, still without a scrollbar on the dialog itself. */
+@media (max-width: 900px) {
+  .vl-svgprev { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .vl-svgprev__art { height: min(170px, 20vh); }
+  .vl-svgprev__parts { max-height: min(220px, 26vh); }
 }

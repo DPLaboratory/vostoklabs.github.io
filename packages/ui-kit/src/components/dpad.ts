@@ -23,6 +23,22 @@ export interface DpadOptions {
   rotate?: boolean;
   /** Initial readout text under the pad. Omit to hide the readout. */
   readout?: string;
+  /**
+   * Smaller cells, for a pad that shares a row with something else.
+   *
+   * An option rather than a class the caller adds afterwards: `root` is a wrapper around the
+   * grid, so `root.classList.add('vl-dpad--compact')` lands one element too high and silently
+   * does nothing — which is exactly what it did until this existed.
+   */
+  compact?: boolean;
+  /**
+   * Which glyphs the four directions use. `arrows` (default) is the standalone pad, where an
+   * arrow reads as "go this way". `chevrons` is for a pad sitting beside its own readout,
+   * where the arrows are a repeated small adjustment rather than a move — lighter ink, and it
+   * stops a 30px cell looking like a filled tile. The centre follows: a target reticle for
+   * arrows, a plain dot for chevrons.
+   */
+  glyphs?: 'arrows' | 'chevrons';
 }
 
 export interface DpadHandle {
@@ -31,10 +47,22 @@ export interface DpadHandle {
   setReadout(text: string): void;
 }
 
-function padBtn(cls: string, icon: string, label: string, onClick: () => void): HTMLButtonElement {
+function padBtn(
+  cls: string,
+  icon: string,
+  label: string,
+  onClick: () => void,
+  title?: string,
+): HTMLButtonElement {
+  /* `title` is separate from `label`, and often absent.
+   *
+   * The accessible name is not automatically worth a hover tooltip. On a pad of five buttons
+   * whose arrows say which way they go, five native tooltips fading in over the panel is
+   * noise — and one of them was reported as a stray tooltip. Screen readers still get the
+   * `aria-label` either way. */
   const btn = el('button', {
     className: `vl-dpad-btn ${cls}`,
-    attrs: { type: 'button', 'aria-label': label, title: label },
+    attrs: { type: 'button', 'aria-label': label, ...(title ? { title } : {}) },
   });
   btn.append(svgEl(icon));
 
@@ -80,10 +108,17 @@ function padBtn(cls: string, icon: string, label: string, onClick: () => void): 
 
 export function dpad(opts: DpadOptions = {}): DpadHandle {
   const step = opts.rotateStep ?? 3;
+  const chevrons = opts.glyphs === 'chevrons';
+  /* The arrows explain themselves; only the centre needs a word, and only where its glyph is a
+   *  dot rather than a reticle. The standalone pad keeps its tooltips. */
+  const tip = (label: string) => (chevrons ? undefined : label);
+  const GLYPH = chevrons
+    ? { up: ICONS.chevronUp, down: ICONS.chevronDown, left: ICONS.chevronLeft, right: ICONS.chevronRight, centre: ICONS.dot }
+    : { up: ICONS.arrowUp, down: ICONS.arrowDown, left: ICONS.arrowLeft, right: ICONS.arrowRight, centre: ICONS.target };
 
   const showRotate = opts.rotate ?? true;
 
-  const grid = el('div', { className: 'vl-dpad' }, [
+  const grid = el('div', { className: `vl-dpad${opts.compact ? ' vl-dpad--compact' : ''}` }, [
     ...(showRotate
       ? [
           padBtn('vl-dpad-rotl vl-dpad-btn--rot', ICONS.rotateLeft, 'Rotate left', () =>
@@ -91,7 +126,7 @@ export function dpad(opts: DpadOptions = {}): DpadHandle {
           ),
         ]
       : []),
-    padBtn('vl-dpad-up', ICONS.arrowUp, 'Move up', () => opts.onMove?.('up')),
+    padBtn('vl-dpad-up', GLYPH.up, 'Move up', () => opts.onMove?.('up'), tip('Move up')),
     ...(showRotate
       ? [
           padBtn('vl-dpad-rotr vl-dpad-btn--rot', ICONS.rotateRight, 'Rotate right', () =>
@@ -99,15 +134,21 @@ export function dpad(opts: DpadOptions = {}): DpadHandle {
           ),
         ]
       : []),
-    padBtn('vl-dpad-left', ICONS.arrowLeft, 'Move left', () => opts.onMove?.('left')),
-    padBtn('vl-dpad-center vl-dpad-btn--center', ICONS.target, 'Reset to center', () =>
-      opts.onReset?.(),
+    padBtn('vl-dpad-left', GLYPH.left, 'Move left', () => opts.onMove?.('left'), tip('Move left')),
+    padBtn(
+      'vl-dpad-center vl-dpad-btn--center',
+      GLYPH.centre,
+      'Reset to center',
+      () => opts.onReset?.(),
+      'Back to the middle',
     ),
-    padBtn('vl-dpad-right', ICONS.arrowRight, 'Move right', () => opts.onMove?.('right')),
-    padBtn('vl-dpad-down', ICONS.arrowDown, 'Move down', () => opts.onMove?.('down')),
+    padBtn('vl-dpad-right', GLYPH.right, 'Move right', () => opts.onMove?.('right'), tip('Move right')),
+    padBtn('vl-dpad-down', GLYPH.down, 'Move down', () => opts.onMove?.('down'), tip('Move down')),
   ]);
 
-  const root = el('div');
+  // A named wrapper, not a bare div: it is the flex item wherever a pad sits beside
+  // something else, and an unclassed element cannot be told not to shrink.
+  const root = el('div', { className: 'vl-dpad-wrap' });
   root.append(grid);
 
   let readout: HTMLElement | null = null;

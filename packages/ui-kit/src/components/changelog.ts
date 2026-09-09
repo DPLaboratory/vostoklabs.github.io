@@ -19,7 +19,57 @@ import { drawer, type DrawerHandle } from './drawer';
   Changes are GROUPED BY KIND rather than listed in the order they were written — all the
   new things, then all the fixes — because the two are read for different reasons, and a
   reader scanning for "is my bug fixed" should not have to filter features out of the list
-  as they go. Keep each line to a few words: this is a scan, not a release note.
+  as they go.
+
+  How to WRITE one is the block below, which every generator's changelog file points at.
+*/
+
+/*
+  ─────────────────────────────────────────────────────────────────────────────────────────
+  HOUSE STYLE FOR AN UPDATE LINE — read this before writing one.
+
+  Every generator keeps its own `src/changelog.(ts|js)` and they all render through here, so
+  the rules live here rather than being restated (and drifting) in each of them.
+
+  1. ONE SHORT SENTENCE, ending in a full stop. Three to nine words. This panel is scanned,
+     not read: someone opens it to find out whether the thing they reported is fixed, and a
+     bullet that runs to two lines makes them hunt for the one that matters.
+
+         ✔ 'Thin lines and small text keep their color.'
+         ✔ 'A shape editor.'
+         ✔ 'Panels scroll on a phone.'
+         ✘ 'Drag an SVG straight onto the SVG panel. The panel said you could before, and
+            nothing happened.'          ← two sentences, and the second is an apology
+         ✘ 'A note about what the licence covers when you download, and the licence details
+            are written into the file itself.'     ← two changes wearing one bullet
+
+  2. SAY WHAT CHANGED FOR THE PERSON HOLDING THE PRINT, not what changed in the source. The
+     reader has never seen the code and never will.
+
+         ✔ 'The preview background matches the panels.'
+         ✘ 'themeColorHex replaces the hardcoded clear colour.'   ← a commit message
+
+  3. ONE CHANGE PER BULLET. If the sentence needs an "and", it is two bullets.
+
+  4. NO APOLOGY AND NO HISTORY. "It used to do X" belongs in a code comment, where the next
+     person to touch it will look. The user only needs what is true now.
+
+         ✔ 'Cancel a batch while it runs.'
+         ✘ 'Cancel a batch while it runs. Before this you had to close the tab.'
+
+  5. PICK THE KIND HONESTLY. `added` is new capability, `fixed` is something that was wrong,
+     `changed` is behaviour that moved. A fix dressed as an addition reads as spin to the one
+     person who reported it.
+
+  6. ONLY WHAT SHIPPED. This is the answer to "has my bug been fixed", and an entry for work
+     that has not reached the deployed app turns that answer into a lie. Add the line in the
+     same change that ships the behaviour, not when you start it.
+
+  7. NO EM DASHES, and no dash standing in for a comma or a full stop. A large share of the
+     people reading this are not reading in their first language.
+
+  Dates group the bullets; the component sorts them newest-first, so append anywhere.
+  ─────────────────────────────────────────────────────────────────────────────────────────
 */
 
 export type ChangeKind = 'added' | 'fixed' | 'changed';

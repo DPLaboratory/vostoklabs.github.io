@@ -245,6 +245,73 @@ check(
   marked.warnings.find((w) => w.startsWith('Provenance:')) ?? 'all marks still buried',
 );
 
+/* A mark with a HOLE in it, which is most real logos: an O, an A, a ring, a monogram.
+
+   This is a regression test for a bug that shipped invisibly. The mark used to be built one
+   ring at a time — `CrossSection.ofPolygons([ring], 'EvenOdd')` per ring, unioned together —
+   and a union of an outer square and its counter is just the outer square. So every counter
+   filled in, and a logo debossed as a featureless slab. Nothing caught it: the part was still
+   one closed solid, the mark still cut material, it was still mirrored, and the import window
+   was showing the truth about the rings while the geometry quietly threw the hole away.
+
+   The probe is volume. An annulus removes strictly LESS material than the solid square that
+   contains it, so if the counter is being filled the two come out identical. Rings are wound
+   in opposite directions, which is what both the tracer emits and what EvenOdd needs. */
+const ringMark: Ring[] = [
+  box(-0.5, -0.5, 0.5, 0.5),
+  // Reversed winding: the counter.
+  [[-0.25, -0.25], [-0.25, 0.25], [0.25, 0.25], [0.25, -0.25]],
+];
+const solidMark: Ring[] = [box(-0.5, -0.5, 0.5, 0.5)];
+
+const holed = run(squareArt, { ...base, bodySize: SIZE, brandMark: { rings: ringMark, sizeMm: MARK_SIZE } });
+const solid = run(squareArt, { ...base, bodySize: SIZE, brandMark: { rings: solidMark, sizeMm: MARK_SIZE } });
+const holedCut = plain.vol - holed.vol;
+const solidCut = plain.vol - solid.vol;
+
+check(
+  'a counter in the mark stays a hole instead of filling in',
+  holedCut < solidCut - 0.5,
+  `annulus removed ${holedCut.toFixed(2)} mm³ vs solid ${solidCut.toFixed(2)} mm³`,
+);
+/* The exact number, not just "less": the counter is half the width of the outer, so it is a
+   quarter of the area, and the annulus must remove about three quarters of what the solid does.
+   Without this an outer that merely shrank would also pass the check above. */
+check(
+  'and the hole is the right size, not merely present',
+  Math.abs(holedCut / solidCut - 0.75) < 0.06,
+  `annulus/solid = ${(holedCut / solidCut).toFixed(3)} (expected ~0.75)`,
+);
+
+/* Two overlapping shapes in one mark must MERGE, not cut each other.
+
+   This is the regression the first hole fix introduced. Per-ring union destroyed counters, so
+   the rings were rebuilt as one CrossSection with EvenOdd - which fixed the counter and broke
+   the opposite case, because EvenOdd counts crossings: where two separate same-wound shapes
+   overlap, the count is even, so the overlap becomes a HOLE. Two overlapping circles debossed
+   as a crescent pair. NonZero counts winding direction instead, so same-wound shapes merge and
+   an oppositely-wound counter is still a hole.
+
+   The probe: two squares sharing half their area. Merged, they remove less than two disjoint
+   squares would (the shared half is only cut once) but strictly MORE than one square alone.
+   Under EvenOdd the overlap is not cut at all, which lands below the one-square figure. */
+const twoOverlapping: Ring[] = [
+  box(-0.5, -0.5, 0.1, 0.5),
+  box(-0.1, -0.5, 0.5, 0.5),
+];
+const oneSquare: Ring[] = [box(-0.5, -0.5, 0.1, 0.5)];
+
+const overlapped = run(squareArt, { ...base, bodySize: SIZE, brandMark: { rings: twoOverlapping, sizeMm: MARK_SIZE } });
+const single = run(squareArt, { ...base, bodySize: SIZE, brandMark: { rings: oneSquare, sizeMm: MARK_SIZE } });
+const overlappedCut = plain.vol - overlapped.vol;
+const singleCut = plain.vol - single.vol;
+
+check(
+  'two overlapping mark shapes merge instead of cutting a hole through each other',
+  overlappedCut > singleCut + 0.5,
+  `overlapping pair removed ${overlappedCut.toFixed(2)} mm³ vs one square ${singleCut.toFixed(2)} mm³`,
+);
+
 // A mark bigger than the base has to shrink, not overhang the wall and cut the outline open.
 const oversized = run(squareArt, { ...base, bodySize: SIZE, brandMark: { rings: markRings, sizeMm: 200 } });
 check(

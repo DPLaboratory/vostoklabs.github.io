@@ -21,18 +21,25 @@ export type SectionAxis = 'x' | 'y' | 'z';
 // model read as the whole app before the panels did. The MakerLab build starts ~25%
 // further back; orbit/zoom are untouched, so users can pull straight in. The public
 // build keeps the original framing. Mirrors the keycap generator's frameMul.
+/** Breathing room around the model in an exported cover: 1.0 is the sphere touching all
+ *  four edges, which reads as cramped at thumbnail size. */
+const COVER_PAD = 1.15;
 const FRAME_MUL = MAKERLAB ? 2.75 : 2.2;
 const FRAME_PAD = MAKERLAB ? 19 : 15;
 
 export interface Viewer {
   setParts(parts: ClickerPart[], preserveCamera?: boolean): void;
   setView(mode: ViewMode): void;
+  /** Turn the cut on or off. Independent of assembled/exploded — you can cut either. */
+  setSectionEnabled(on: boolean): void;
   setSection(axis: SectionAxis, pos: number): void;
   setSwitch(mesh: MeshData | null): void;
   showSwitch(on: boolean): void;
   /** Place one preview switch mesh per (clamped) placement the geometry was built with. */
   setSwitchPlacements(placements: SwitchPlacement[]): void;
   renderToPng(): Promise<Blob | null>;
+  /** A small PNG of the model for embedding as a file cover. */
+  renderCoverPng(maxEdge?: number): Promise<Uint8Array | null>;
   setTheme(theme: string): void;
   /** Swap the floor the model stands on: a build plate, or the plain grid. */
   setPlate(choice: PlateChoice): void;
@@ -82,7 +89,14 @@ function color(rgb: RGB): THREE.Color {
 }
 
 export function createViewer(container: HTMLElement): Viewer {
-  const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+  /* `stencil: true` is not the default any more — three.js turned it off, and without it every
+     stencil test passes trivially, so the section caps below render as full-size white quads
+     standing in the scene instead of painting only the cut face. */
+  const renderer = new THREE.WebGLRenderer({
+    antialias: true,
+    preserveDrawingBuffer: true,
+    stencil: true,
+  });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setSize(container.clientWidth, container.clientHeight);
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -98,6 +112,10 @@ export function createViewer(container: HTMLElement): Viewer {
   const bounds = new THREE.Vector3(40, 40, 40);
   let sectionAxis: SectionAxis = 'y';
   let sectionPos = 0;
+  /* The cut is its own switch, not a third view mode. It was one at first, which meant
+     turning it on cost you assembled/exploded — two unrelated questions sharing one control.
+     Now either view can be cut. */
+  let sectionOn = false;
 
   const scene = new THREE.Scene();
   const currentTheme = document.documentElement.getAttribute('data-theme') || 'dark';
@@ -184,12 +202,121 @@ export function createViewer(container: HTMLElement): Viewer {
     placeholder = null;
   }
 
+  /* --- The cut face -------------------------------------------------------------------
+     A clipped mesh is an open shell, so the first version of this let you see straight
+     through the cut into the lit inside of the far wall — which is why it read as a mess
+     rather than as a cross-section.
+
+     The fix is the standard stencil cap. For every part we draw its geometry twice into the
+     stencil buffer and nowhere else: back faces incrementing, front faces decrementing. What
+     survives is a non-zero stencil exactly where the plane passes through solid material.
+     Then one quad per part, laid on the plane in that part's own colour, is drawn through
+     that stencil — so the cut paints as solid material and the model reads the way a
+     sectioned CAD drawing does. Each quad clears the stencil after itself, or the next
+     part's cap would inherit it.
+
+     The reference switch is deliberately NOT clipped: it is not part of the print, and a
+     whole switch sitting inside a cutaway body is exactly the picture this view exists to
+     give ("does the switch fit?"). Cutting it too just adds a second open shell. */
+  const capPlanes = new THREE.Group();
+  capPlanes.visible = false;
+  scene.add(capPlanes);
+  const capQuadGeom = new THREE.PlaneGeometry(1, 1);
+
+  /* Ask the context whether it really gave us a stencil buffer, rather than assuming the
+     request above was honoured. Without one every stencil test passes, and the caps stop
+     being caps: each quad paints its full size across the scene. That failure is far worse
+     than having no caps at all, so when the buffer is missing we simply do without them and
+     the cut falls back to an open shell. */
+  const HAS_STENCIL = renderer.getContext().getContextAttributes()?.stencil === true;
+
+  /* Render order is GLOBAL in three.js, not per object, so the stencil pair and the cap that
+     consumes it have to interleave per part: write part 0, cap part 0, write part 1, cap
+     part 1… Give every stencil pair one slot and its cap the next, or all the writes happen
+     first, the first cap paints the union of every part and clears, and every cap after it
+     draws against an empty stencil and disappears. */
+  const stencilSlot = (i: number) => 10 + i * 2;
+
+  function stencilGroupFor(geometry: THREE.BufferGeometry, index: number): THREE.Group {
+    const group = new THREE.Group();
+    for (const [side, op] of [
+      [THREE.BackSide, THREE.IncrementWrapStencilOp],
+      [THREE.FrontSide, THREE.DecrementWrapStencilOp],
+    ] as const) {
+      const mat = new THREE.MeshBasicMaterial({
+        depthWrite: false,
+        depthTest: false,
+        colorWrite: false,
+        stencilWrite: true,
+        stencilFunc: THREE.AlwaysStencilFunc,
+        side,
+        clippingPlanes: [clipPlane],
+        stencilFail: op,
+        stencilZFail: op,
+        stencilZPass: op,
+      });
+      const mesh = new THREE.Mesh(geometry, mat);
+      mesh.renderOrder = stencilSlot(index);
+      group.add(mesh);
+    }
+    return group;
+  }
+
+  function capQuadFor(c: THREE.Color, index: number): THREE.Mesh {
+    const mat = new THREE.MeshStandardMaterial({
+      color: c,
+      metalness: 0,
+      roughness: 0.7,
+      stencilWrite: true,
+      stencilRef: 0,
+      stencilFunc: THREE.NotEqualStencilFunc,
+      stencilFail: THREE.ReplaceStencilOp,
+      stencilZFail: THREE.ReplaceStencilOp,
+      stencilZPass: THREE.ReplaceStencilOp,
+    });
+    const quad = new THREE.Mesh(capQuadGeom, mat);
+    quad.renderOrder = stencilSlot(index) + 1;
+    // Without this the stencil left by one part is still standing when the next part's cap
+    // is drawn, and every cap after the first paints the union of the ones before it.
+    quad.onAfterRender = (r) => r.clearStencil();
+    return quad;
+  }
+
+  /** Lay every cap quad on the plane, facing it, big enough to cover the whole model. */
+  function updateCaps() {
+    capPlanes.visible = sectionOn;
+    if (!sectionOn) return;
+    const span = Math.max(bounds.x, bounds.y, bounds.z) * 2.5 + 20;
+    for (const quad of capPlanes.children) {
+      clipPlane.coplanarPoint(quad.position);
+      quad.lookAt(
+        quad.position.x - clipPlane.normal.x,
+        quad.position.y - clipPlane.normal.y,
+        quad.position.z - clipPlane.normal.z,
+      );
+      quad.scale.set(span, span, 1);
+    }
+  }
+
+  function clearCaps() {
+    for (const quad of [...capPlanes.children]) {
+      capPlanes.remove(quad);
+      if (quad instanceof THREE.Mesh) (quad.material as THREE.Material).dispose();
+    }
+  }
+
   function clearGroup(g: THREE.Group) {
     for (const child of [...g.children]) {
       g.remove(child);
       if (child instanceof THREE.Mesh) {
         child.geometry.dispose();
         (child.material as THREE.Material).dispose();
+      } else if (child instanceof THREE.Group) {
+        // A stencil pair. Its two meshes SHARE the part's geometry, which the part's own
+        // mesh disposes above, so only the materials are ours to free here.
+        for (const m of child.children) {
+          if (m instanceof THREE.Mesh) (m.material as THREE.Material).dispose();
+        }
       }
     }
   }
@@ -198,6 +325,7 @@ export function createViewer(container: HTMLElement): Viewer {
     clearPlaceholder();
     clearGroup(capGroup);
     clearGroup(bodyGroup);
+    clearCaps();
     materials.length = 0;
     partMeshes.length = 0;
     hoveredIndex = null;
@@ -216,7 +344,14 @@ export function createViewer(container: HTMLElement): Viewer {
       mesh.userData.partIndex = i; // raycast hit -> part/material index
       mesh.userData.partName = p.name; // essential for live preview and syncing heights
       partMeshes.push(mesh);
-      (p.kind === 'body' ? bodyGroup : capGroup).add(mesh);
+      const group = p.kind === 'body' ? bodyGroup : capGroup;
+      group.add(mesh);
+      // The stencil pair rides in the same group as the part, so it inherits the same
+      // transform; the cap quad is world-space and lives with the other quads.
+      if (HAS_STENCIL) {
+        group.add(stencilGroupFor(mesh.geometry, i));
+        capPlanes.add(capQuadFor(mat.color, i));
+      }
     }
 
     // Center X/Y, but place the bottom of the assembly at z = 0 so it sits on the grid.
@@ -266,15 +401,22 @@ export function createViewer(container: HTMLElement): Viewer {
           : new THREE.Vector3(0, -1, 0);
     const half = (sectionAxis === 'x' ? bounds.x : sectionAxis === 'z' ? bounds.z : bounds.y) / 2;
     clipPlane.normal.copy(n);
-    clipPlane.constant = sectionPos * half;
+    /* Every one of these normals is -1 on its own axis, so `normal · x + constant = 0`
+       reduces to `axis = constant` and the constant IS the cut's position along that axis.
+       The model is centred on X and Y but SITS on z = 0, so the middle of a Z cut is half
+       the height up — without that term, "0%" on Z cut at the build plate and the whole
+       negative half of the slider did nothing. */
+    const middle = sectionAxis === 'z' ? bounds.z / 2 : 0;
+    clipPlane.constant = middle + sectionPos * half;
   }
 
   function applyView() {
     capGroup.position.z = viewMode === 'exploded' ? explodeOffset : 0;
-    const section = viewMode === 'section';
-    if (section) updateClipPlane();
-    for (const m of materials) (m as THREE.MeshStandardMaterial).clippingPlanes = section ? [clipPlane] : [];
-    if (switchMaterial) switchMaterial.clippingPlanes = section ? [clipPlane] : [];
+    if (sectionOn) updateClipPlane();
+    const planes = sectionOn ? [clipPlane] : [];
+    for (const m of materials) (m as THREE.MeshStandardMaterial).clippingPlanes = planes;
+    if (switchMaterial) switchMaterial.clippingPlanes = planes;
+    updateCaps();
   }
 
   function setView(mode: ViewMode) {
@@ -333,10 +475,84 @@ export function createViewer(container: HTMLElement): Viewer {
     rebuildSwitchMeshes();
   }
 
+  function setSectionEnabled(on: boolean) {
+    sectionOn = on;
+    applyView();
+  }
+
   function setSection(axis: SectionAxis, pos: number) {
     sectionAxis = axis;
     sectionPos = pos;
-    if (viewMode === 'section') updateClipPlane();
+    if (sectionOn) {
+      updateClipPlane();
+      updateCaps();
+    }
+  }
+
+  /**
+   * A square PNG of the model, for embedding as a file's cover.
+   *
+   * Deliberately NOT a screenshot of the viewport. The first version was, and it showed: the
+   * build plate and its grid filled most of the frame, the model sat wherever the user had
+   * last dragged it, an exploded lid ran off the top edge, and the plate's noise texture made
+   * a 512px PNG weigh 328KB — over half the export, twice, since it is written under two
+   * names. This frames the model itself, on the flat scene background, from whatever angle
+   * the user is viewing it at.
+   *
+   * The cut is switched off for the shot: a file whose cover shows a sliced model looks like
+   * a broken model.
+   */
+  async function renderCoverPng(edge = 512): Promise<Uint8Array | null> {
+    /* Restore from the RENDERER's own size, not from `container.clientWidth`. The container
+       measures 0×0 whenever its pane is hidden or mid-layout, and restoring to that left the
+       canvas permanently 0×0 — the viewport went black and only a window resize brought it
+       back. The renderer always knows the size it is actually at. */
+    const prevSize = renderer.getSize(new THREE.Vector2());
+    const prevRatio = renderer.getPixelRatio();
+    const prevAspect = camera.aspect;
+    const prevPos = camera.position.clone();
+    const wasCut = sectionOn;
+    const plateWasVisible = buildPlate.object.visible;
+
+    if (wasCut) setSectionEnabled(false);
+    buildPlate.object.visible = false;
+
+    // Frame whatever is actually on screen — exploded included, so a cover of an exploded
+    // view shows both halves rather than clipping the one that floats above the frame.
+    root.updateMatrixWorld(true);
+    const box = new THREE.Box3().expandByObject(capGroup).expandByObject(bodyGroup);
+    if (switchGroup.visible) box.expandByObject(switchGroup);
+    const center = box.getCenter(new THREE.Vector3());
+    // Sphere radius, so the fit holds at every orbit angle, and the frame is square, so the
+    // vertical FOV governs both directions.
+    const radius = Math.max(box.getSize(new THREE.Vector3()).length() / 2, 1);
+    const dist = (radius / Math.sin((camera.fov * Math.PI) / 360)) * COVER_PAD;
+    const dir = camera.position.clone().sub(controls.target).normalize();
+    camera.position.copy(center).addScaledVector(dir, dist);
+    camera.lookAt(center);
+    camera.aspect = 1;
+    camera.updateProjectionMatrix();
+
+    // `updateStyle: false` — the drawing buffer changes shape, the canvas element on screen
+    // does not, so nothing flickers while the shot is taken.
+    renderer.setPixelRatio(1);
+    renderer.setSize(edge, edge, false);
+    renderer.render(scene, camera);
+    const blob = await new Promise<Blob | null>((res) =>
+      renderer.domElement.toBlob((b) => res(b), 'image/png'),
+    );
+
+    renderer.setPixelRatio(prevRatio);
+    renderer.setSize(prevSize.x, prevSize.y, false);
+    camera.aspect = prevAspect;
+    camera.updateProjectionMatrix();
+    camera.position.copy(prevPos);
+    controls.update(); // re-aims the camera at the untouched orbit target
+    buildPlate.object.visible = plateWasVisible;
+    if (wasCut) setSectionEnabled(true);
+    renderer.render(scene, camera); // put the user's own frame back before they can see this one
+
+    return blob ? new Uint8Array(await blob.arrayBuffer()) : null;
   }
 
   async function renderToPng(): Promise<Blob | null> {
@@ -535,6 +751,8 @@ export function createViewer(container: HTMLElement): Viewer {
     renderer.domElement.removeEventListener('pointerup', onPointerUp);
     clearGroup(capGroup);
     clearGroup(bodyGroup);
+    clearCaps();
+    capQuadGeom.dispose();
     buildPlate.dispose();
     clearSwitchMeshes();
     switchGeometry?.dispose();
@@ -553,11 +771,13 @@ export function createViewer(container: HTMLElement): Viewer {
   return {
     setParts,
     setView,
+    setSectionEnabled,
     setSection,
     setSwitch,
     showSwitch,
     setSwitchPlacements,
     renderToPng,
+    renderCoverPng,
     setTheme,
     setPlate: (choice) => buildPlate.setChoice(choice),
     onPartPick,

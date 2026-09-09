@@ -16,7 +16,15 @@ export function el<K extends keyof HTMLElementTagNameMap>(
   if (props.className) node.className = props.className;
   if (props.text !== undefined) node.textContent = props.text;
   if (props.attrs) {
-    for (const [k, v] of Object.entries(props.attrs)) node.setAttribute(k, v);
+    for (const [k, v] of Object.entries(props.attrs)) {
+      // `style` goes through the CSSOM, never `setAttribute`. A `style-src` policy with no
+      // 'unsafe-inline' — the MakerLab host's — refuses a style ATTRIBUTE set from script, and
+      // reports it only in the console: every filament swatch and colour chip in the keycap
+      // embed rendered transparent, because `--swatch` never landed. Assigning `cssText` is a
+      // CSSOM write, which the directive does not cover.
+      if (k === 'style') node.style.cssText = v;
+      else node.setAttribute(k, v);
+    }
   }
   if (props.on) {
     for (const [k, fn] of Object.entries(props.on)) {

@@ -57,7 +57,7 @@ export type BaseShapeKind =
   | 'ngon' | 'cross' | 'squircle' | 'capsule'
   | 'shield' | 'tag' | 'arch'
   | 'custom';
-export type ViewMode = 'assembled' | 'exploded' | 'section';
+export type ViewMode = 'assembled' | 'exploded';
 
 /** Which interaction mode the viewport is in. */
 export type EditMode = 'color' | 'extrude' | 'edges';

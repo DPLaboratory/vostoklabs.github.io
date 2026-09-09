@@ -30,6 +30,8 @@ export {
   type GeneratorHeaderOptions,
   type QualityCalloutOptions,
   type ProjectActionsOptions,
+  panelCredit,
+  type PanelCreditOptions,
 } from './components/generator-chrome';
 export { sidebarFooter, type SidebarFooterOptions } from './components/sidebar-footer';
 export { appShell, type AppShellOptions, type AppShell, type PanelOptions } from './components/app-shell';
@@ -50,6 +52,8 @@ export { captureCover, type RendererLike } from './components/cover-image';
 export {
   FILAMENTS,
   filamentRow,
+  paletteRow,
+  type PaletteRowOptions,
   colorChip,
   contrastRatio,
   luminance,
@@ -91,8 +95,20 @@ export {
   type IconButtonOptions,
 } from './components/button';
 export { dpad, type DpadOptions, type DpadHandle } from './components/dpad';
+export { nudgePad, type NudgePadOptions, type NudgeAxisOptions, type NudgePadHandle } from './components/nudge-pad';
+export { colorPopover, closeColorPopover, type ColorPopoverOptions, type ColorPopoverOption, type ColorPopoverHandle } from './components/color-popover';
+export { busyChip, type BusyChipOptions, type BusyChipHandle } from './components/busy-chip';
 export { section, collapsibleSection, makeCollapsible, type SectionOptions } from './components/section';
 export { drawer, closeAllDrawers, type DrawerOptions, type DrawerHandle } from './components/drawer';
+export {
+  openSvgImport,
+  type SvgImportMode,
+  type SvgImportPart,
+  type SvgImportChoice,
+  type SvgImportPath,
+  type SvgImportTrace,
+  type SvgImportOptions,
+} from './components/svg-import';
 export {
   symbolPickerButton,
   openSymbolPicker,

@@ -11,6 +11,15 @@ export interface PanelOptions {
   scroll?: (HTMLElement | Node)[];
   /** Fixed content pinned below the scroll area (e.g. the export footer). */
   footer?: (HTMLElement | Node)[];
+  /**
+   * A `panelCredit()` strip pinned under the scroll area.
+   *
+   * Its own slot rather than the footer, because the footer pads its contents by 20 px a side
+   * and the strip carries its own padding and border: inside the footer the byline's column
+   * came out 130 px wide and "Made by Vostok Labs" wrapped onto two lines. Here it spans the
+   * panel, the way the clicker and keycap generators mount it.
+   */
+  credit?: HTMLElement;
 }
 
 export interface AppShellOptions {
@@ -41,6 +50,7 @@ function panel(side: 'left' | 'right', opts: PanelOptions): { panel: HTMLElement
     ...(opts.scroll ?? []),
   ]);
   const children: (HTMLElement | Node)[] = [scroll];
+  if (opts.credit) children.push(opts.credit);
   if (opts.footer?.length) children.push(el('div', { className: 'vl-panel__footer' }, opts.footer));
   const p = el('div', { className: `vl-panel vl-panel--${side}` }, children);
   return { panel: p, scroll };

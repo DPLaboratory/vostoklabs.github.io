@@ -1014,6 +1014,21 @@ export function buildClicker(
   let placed2D: Section | null = null; // 2D union of inlays already carved (no overlap)
   const holesByLevel = new Map<number, Section>();
 
+  /* Two ways part of a design silently prints wrong, both collected here and reported once
+     after the loop rather than per region — a four-colour trace can drop several slivers at
+     once, and four near-identical warnings read as noise.
+
+     Note what is deliberately NOT checked: whether a colour breaks into disconnected islands.
+     That sounds like the useful test and is not one here. Every region arriving in this loop
+     has already been split into one connected component per shape upstream (`componentsFromMask`
+     in image/trace.ts), so the dot of an "i" is its own region, not an island inside one; and
+     an inlay cannot come loose in any case, because `base` starts as the FULL plate and only
+     has material removed exactly where an inlay sits, so every piece rests in its own walled
+     pocket on a solid floor. A decompose()-based island warning would fire on i, j, %, B, O
+     and most icons while nothing was ever actually floating. */
+  const droppedParts: string[] = [];
+  const throughCapParts: string[] = [];
+
   for (const { r } of ordered) {
     const validRings = placeRings(r.rings).filter(ring => ring.length >= 3 && getRingArea(ring) > 0.001);
     if (validRings.length === 0) continue;
@@ -1024,12 +1039,12 @@ export function buildClicker(
     if (Math.abs(textBold) > 0.005) cs = track(cs.offset(textBold, 'Round', 2.0, 24));
     if (params.colorBleed > 0.001) cs = grow(cs, params.colorBleed);
     const clipped = track(cs.intersect(imageArea));
-    if (sectionIsEmpty(clipped)) continue;
-    
+    if (sectionIsEmpty(clipped)) { droppedParts.push(r.partName); continue; }
+
     // Prevent overlapping with smaller parts processed earlier
     let fp = clipped;
     if (placed2D) fp = track(fp.subtract(placed2D));
-    if (sectionIsEmpty(fp)) continue;
+    if (sectionIsEmpty(fp)) { droppedParts.push(r.partName); continue; }
     
     placed2D = placed2D ? track(placed2D.add(fp)) : fp;
 
@@ -1037,7 +1052,15 @@ export function buildClicker(
     const heightShift = level * params.stepHeight;
     const topZ = slabTopZ + Math.max(0, heightShift);
     const bottomZ = imageBottomZ + Math.min(0, heightShift);
-    
+
+    /* A recess deep enough to reach the cap's underside is a hole straight through the cap.
+       Reachable today with default settings: level -5 × 0.6 mm step = -3.0 mm against a
+       1.5 mm backing, which lands 1.5 mm BELOW `slabBottomZ`.
+       Warned rather than clamped on purpose — clamping would silently change what every
+       already-saved design carrying a deep level renders as, which is the mistake the
+       `shapeSides ?? 6` default made once already. */
+    if (bottomZ < slabBottomZ + 0.05) throughCapParts.push(r.partName);
+
     let inlay: Solid = extrudeAt(fp, topZ - bottomZ, bottomZ);
     if (inlay.isEmpty()) continue;
 
@@ -1074,6 +1097,19 @@ export function buildClicker(
     // Group the 2D footprint by its level to carve a single hole per height level
     const existing = holesByLevel.get(level);
     holesByLevel.set(level, existing ? track(existing.add(fp)) : fp);
+  }
+
+  if (droppedParts.length) {
+    warnings.push(
+      droppedParts.length === 1
+        ? 'One colour was too small to print and was left out of the design.'
+        : `${droppedParts.length} colours were too small to print and were left out of the design.`,
+    );
+  }
+  if (throughCapParts.length) {
+    warnings.push(
+      'A lowered part reaches the back of the cap and will print as a hole through it. Raise it, or increase Cap thickness.',
+    );
   }
 
   // Base-color cap = plate − holes, then ∪ stem ∪ perimeter skirt.
@@ -1430,19 +1466,32 @@ export function buildClicker(
         + 'Increase the base size for a bigger mark.',
       );
     }
-    let mark: Section | null = null;
-    for (const ring of params.brandMark.rings) {
-      if (ring.length < 3) continue;
-      // Negated X is the mirror. Doing it in the ring rather than with `.mirror()` keeps it
-      // to one multiplication and puts it next to the reason it is here.
-      const poly = track(
-        CrossSection.ofPolygons(
-          [ring.map(([x, y]) => [-x * size + cx, y * size + cy] as [number, number])],
-          'EvenOdd',
-        ),
-      );
-      mark = mark ? track(mark.add(poly)) : poly;
-    }
+    /* ALL the rings in ONE CrossSection, not one section per ring unioned together.
+       Per-ring was the first version and it silently destroyed every hole: the outer ring of an
+       'O' is one solid disc, its counter is a second solid disc, and a union of the two is the
+       bigger disc. So a logo with any counter in it — an O, an A, a donut, the SD-card icon that
+       started this — debossed as a featureless blob, and nothing in the import window could fix
+       it because the window was showing the truth about the rings and the lie was down here.
+       One `ofPolygons` with EvenOdd is what makes a nested ring a hole. The tracer already winds
+       outers and holes in opposite directions, so this also agrees with the nonzero fill the
+       import preview paints — the window and the model now say the same thing. */
+    const markPolys = params.brandMark.rings
+      .filter((ring) => ring.length >= 3)
+      // Negated X is the mirror. Doing it in the ring rather than with `.mirror()` keeps it to
+      // one multiplication and puts it next to the reason it is here.
+      .map((ring) => ring.map(([x, y]) => [-x * size + cx, y * size + cy] as [number, number]));
+    /* NonZero, not EvenOdd.
+
+       EvenOdd was the first fix, for the right bug — per-ring union destroyed every counter, so
+       an O debossed as a disc — but it over-corrected. EvenOdd asks "how many rings enclose this
+       point, odd or even", so two SEPARATE shapes that happen to overlap punch a hole through
+       each other: two overlapping circles deboss as a crescent pair. NonZero asks about winding
+       direction instead, so a counter wound against its outer is still a hole (the tracer winds
+       them oppositely, which is exactly what NonZero needs) while two same-wound shapes simply
+       merge. Holes AND overlaps, both right. */
+    const mark: Section | null = markPolys.length
+      ? track(CrossSection.ofPolygons(markPolys, 'NonZero'))
+      : null;
     if (mark && !sectionIsEmpty(mark)) {
       // From just below the underside up to MARK_DEPTH above it: the overshoot guarantees a
       // clean cut through the face rather than a coplanar one, which renders as z-fighting.

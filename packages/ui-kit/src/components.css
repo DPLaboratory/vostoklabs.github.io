@@ -714,6 +714,7 @@
 .vl-dpad-btn--rot { color: var(--muted); }
 .vl-dpad-btn--rot svg { width: 18px; height: 18px; }
 /* Center reset: dashed circle, quiet until hovered. */
+.vl-dpad-wrap { flex: 0 0 auto; }
 .vl-dpad-btn--center { color: var(--muted); border-radius: 50%; border-style: dashed; }
 .vl-dpad-btn--center svg { width: 18px; height: 18px; }
 .vl-dpad-up { grid-area: up; }
@@ -929,14 +930,50 @@
 
 /* The custom-colour chip. Same footprint as a swatch so the grid stays even; the native
    colour input's own well is stretched to fill it. */
-.vl-swatch--custom {
-  -webkit-appearance: none;
-  appearance: none;
-  overflow: hidden;
+/* The label line: the name of the thing being coloured, and the custom picker at the far end
+   of it. The picker sits here rather than in the grid below because a fifteenth chip in a row
+   of seven lands alone on a third line. */
+.vl-swatches__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
 }
-.vl-swatch--custom::-webkit-color-swatch-wrapper { padding: 0; }
-.vl-swatch--custom::-webkit-color-swatch { border: none; border-radius: inherit; }
-.vl-swatch--custom::-moz-color-swatch { border: none; border-radius: inherit; }
+
+/* The picker chip: a colour wheel, not a swatch. It has to say "something else" at a glance
+   rather than repeat whichever chip is already selected, so it paints the wheel until it is
+   actually holding an off-palette value — then that value covers the wheel (via `--swatch`,
+   set by `filamentRow`) and it takes the selection ring like any other chip.
+
+   A `<label>` with the real input stretched over it at zero opacity: Chromium paints the
+   input's value into its own shadow part, over any background it is given, so an
+   `<input type="color">` can never show anything but its own colour. */
+.vl-swatch--custom {
+  position: relative;
+  inline-size: 22px;
+  block-size: 22px;
+  flex: 0 0 auto;
+  aspect-ratio: auto;
+  overflow: hidden;
+  background:
+    linear-gradient(var(--swatch, transparent), var(--swatch, transparent)),
+    conic-gradient(#f2545b, #f2c14e, #4caf50, #2196f3, #7e57c2, #f2545b);
+}
+.vl-swatch--custom input[type='color'] {
+  position: absolute;
+  inset: 0;
+  inline-size: 100%;
+  block-size: 100%;
+  padding: 0;
+  border: none;
+  background: none;
+  opacity: 0;
+  cursor: pointer;
+}
+.vl-swatch--custom:focus-within {
+  outline: none;
+  box-shadow: var(--ring);
+}
 
 /* A bare colour well, split out of `filamentRow` so a dense list of parts can have one
    without hand-rolling `<input type="color">`. */
@@ -976,4 +1013,94 @@
 .vl-color-chip:focus-visible {
   outline: none;
   box-shadow: 0 0 0 2px var(--panel), 0 0 0 4px var(--accent);
+}
+
+/* ---------- One colour, one line: the compact palette row ---------- */
+/* A name and the chip holding its colour, which opens the shared picker. See `paletteRow()`
+   for why a sidebar gets this instead of the fourteen-swatch shelf. */
+.vl-palette-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.vl-palette-row__label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--control-fs);
+  color: var(--text);
+}
+.vl-control--disabled .vl-palette-row__label { color: var(--muted); }
+
+/* ---------- The colour picker popover ---------- */
+/* Round chips, because a colour here is a spool rather than a UI surface — and round reads as
+   a sample where a rounded square reads as another button. Fixed four across: the list is a
+   shelf of about fourteen, and a width that follows its contents would jump every time an app
+   offered a different number. */
+.vl-color-popover {
+  position: fixed;
+  z-index: 1000;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  width: 178px;
+  padding: 10px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-modal);
+  box-shadow: var(--shadow-toast);
+  animation: vl-pop-in var(--dur-in-sm) var(--ease-standard);
+}
+@keyframes vl-pop-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+@media (prefers-reduced-motion: reduce) { .vl-color-popover { animation: none; } }
+:root[data-motion='reduced'] .vl-color-popover { animation: none; }
+
+.vl-color-popover__chip,
+.vl-color-popover__custom {
+  inline-size: 32px;
+  block-size: 32px;
+  padding: 0;
+  border-radius: 50%;
+  cursor: pointer;
+  transition:
+    transform var(--dur-press) var(--ease-standard),
+    box-shadow var(--dur-press) var(--ease-standard);
+}
+.vl-color-popover__chip {
+  border: 1.5px solid color-mix(in srgb, var(--text) 22%, transparent);
+  background: var(--swatch, transparent);
+}
+.vl-color-popover__chip:hover,
+.vl-color-popover__custom:hover { transform: scale(1.12); }
+.vl-color-popover__chip:focus-visible,
+.vl-color-popover__custom:focus-within {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--panel), 0 0 0 4px var(--accent);
+}
+/* The selected one is ringed rather than merely bordered: on a shelf where two greys sit next
+   to each other, a border-colour change alone is not a difference you can find. */
+.vl-color-popover__chip.is-on {
+  box-shadow: 0 0 0 2px var(--panel), 0 0 0 4px var(--accent);
+}
+/* The custom cell wears the wheel with the native input laid over it at zero opacity —
+   Chromium paints a colour input's value over any background it is given. */
+.vl-color-popover__custom {
+  position: relative;
+  display: inline-flex;
+  overflow: hidden;
+  border: 1.5px solid color-mix(in srgb, var(--text) 22%, transparent);
+  background: conic-gradient(#f2545b, #f2c14e, #4caf50, #2196f3, #7e57c2, #f2545b);
+}
+.vl-color-popover__custom input[type='color'] {
+  position: absolute;
+  inset: -4px;
+  inline-size: calc(100% + 8px);
+  block-size: calc(100% + 8px);
+  padding: 0;
+  border: none;
+  background: none;
+  opacity: 0;
+  cursor: pointer;
 }

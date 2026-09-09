@@ -92,29 +92,11 @@ export const TEMPLATE = `
              them. The number boxes stay visible for typing an exact offset. -->
         <div class="nudge-block">
           <div class="fit-head">Nudge</div>
-          <div class="nudge-row">
-            <div class="dpad">
-              <button id="nudgeUp" class="dpad-btn dpad-btn--up" type="button" aria-label="Nudge up">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg>
-              </button>
-              <button id="nudgeLeft" class="dpad-btn dpad-btn--left" type="button" aria-label="Nudge left">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
-              </button>
-              <button id="nudgeCenter" class="dpad-btn dpad-btn--center" type="button" aria-label="Centre the legend" title="Back to the middle">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/></svg>
-              </button>
-              <button id="nudgeRight" class="dpad-btn dpad-btn--right" type="button" aria-label="Nudge right">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
-              </button>
-              <button id="nudgeDown" class="dpad-btn dpad-btn--down" type="button" aria-label="Nudge down">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
-              </button>
-            </div>
-            <div class="nudge-vals">
-              <div class="nudge-val"><label for="offxNum">X</label><input id="offxNum" type="number" step="0.1" /><span class="unit">mm</span></div>
-              <div class="nudge-val"><label for="offyNum">Y</label><input id="offyNum" type="number" step="0.1" /><span class="unit">mm</span></div>
-            </div>
-          </div>
+          <!-- The kit's nudgePad(): the d-pad and the X/Y fields as one control, built in
+               mount.js. The two range inputs stay here, hidden — they carry the per-cap
+               limits (see setNudgeRange) and they are what the rest of the app, and both
+               paid modes, already listen to. The pad drives them; it never replaced them. -->
+          <div id="nudgePadMount"></div>
           <input id="offx" type="range" min="-5" max="5" step="0.1" value="0" class="visually-hidden" tabindex="-1" aria-hidden="true" />
           <input id="offy" type="range" min="-5" max="5" step="0.1" value="0" class="visually-hidden" tabindex="-1" aria-hidden="true" />
         </div>
@@ -137,13 +119,13 @@ export const TEMPLATE = `
         </div>
         <div class="switch-block" id="shineThroughRow">
           <div class="switch-row">
-            <span class="switch-label">Shine through<button class="help-badge" type="button" aria-label="What does shine through do?" data-tip="Carves the icon all the way through the top of the keycap and prints the stem in the legend colour too. Print the legend and stem in transparent plastic (PLA or PETG) so the icon lights up.">?</button></span>
+            <span class="switch-label">Shine <span class="help-tail">through<button class="help-badge" type="button" aria-label="What does shine through do?" data-tip="Carves the icon all the way through the top of the keycap and prints the stem in the legend colour too. Print the legend and stem in transparent plastic (PLA or PETG) so the icon lights up.">?</button></span></span>
             <label class="toggle"><input id="through" type="checkbox" /><span class="slider"></span></label>
           </div>
         </div>
         <div class="switch-block">
           <div class="switch-row">
-            <span class="switch-label">Single color, recessed legend<button class="help-badge" type="button" aria-label="What does single color, recessed legend do?" data-tip="Engraves the icon as a recess into the top of the cap instead of a separate-colour body, so the whole keycap prints in one filament. Depth sets how deep the legend is carved.">?</button></span>
+            <span class="switch-label">Single color, recessed <span class="help-tail">legend<button class="help-badge" type="button" aria-label="What does single color, recessed legend do?" data-tip="Engraves the icon as a recess into the top of the cap instead of a separate-colour body, so the whole keycap prints in one filament. Depth sets how deep the legend is carved.">?</button></span></span>
             <label class="toggle"><input id="single" type="checkbox" /><span class="slider"></span></label>
           </div>
         </div>
@@ -159,29 +141,31 @@ export const TEMPLATE = `
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
           </button>
         </div>
-        <!-- The labels are in spans so a mode that adds a second legend can renumber the first
-             one ("Legend" → "Legend 1"); a bare text node has nothing to address. -->
+        <!-- Filament swatches, built in mount.js from the kit's paletteRow() — the same
+             palette the clicker picks from. These two inputs stay as the state the rest of
+             the app reads and writes (capColor.value, and both paid modes listen for their
+             input event); the swatch rows write into them and announce it. -->
         <div class="colors">
-          <div class="color"><input id="capColor" type="color" value="#1c1c1e" /> <label class="color-label" for="capColor">Keycap</label></div>
-          <div class="color"><input id="logoColor" type="color" value="#f2f2f2" /> <label class="color-label" for="logoColor" id="logoColorLabel">Legend</label></div>
+          <input id="capColor" type="color" value="#161616" hidden />
+          <input id="logoColor" type="color" value="#f7f7f5" hidden />
+          <div id="capColorMount"></div>
+          <div id="logoColorMount"></div>
         </div>
         <div id="exportBlankMount"></div>
       </div>
-      <!-- The Updates drawer, the same one the clicker and foldbox carry. It replaced a
-           "What's new" modal that opened itself on load and told first-time visitors what had
-           changed "since you were last here". -->
-      <div id="updatesMount"></div>
       </div><!-- .vl-panel__scroll -->
 
-      <!-- Bottom-left credit slot. Only the MakerLab build fills this: per MakerWorld's
-           review the Vostok Labs intro moves out of the top-left into a compact pinned
-           line down here. Stays empty (and display:none) in the public build. -->
+      <!-- Bottom-left credit strip: who made this, and what changed. The kit's
+           panelCredit(), pinned outside the scroll area so it does not scroll away with the
+           controls. It began as MakerWorld review feedback — the Vostok Labs intro should not
+           be the most prominent thing in the embed — and turned out to be the better shape in
+           both builds, so the Updates button lives here rather than as a full-width button
+           competing with the controls above it. -->
       <div id="keycapCredit"></div>
     </aside>
 
     <div id="viewport" class="vl-stage">
       <p class="vl-stage__label">Live 3D Preview</p>
-      <div id="busy"><span class="busy-spinner" aria-hidden="true"></span><span id="busyText">generating…</span><span id="busyCancel"></span></div>
       <p id="hint" class="vl-stage__hint">Hold left click to rotate, right click to pan, scroll to zoom.</p>
       <div id="status" role="status" aria-live="polite" aria-atomic="true">Loading…</div>
       <div class="meta" id="meta"></div>

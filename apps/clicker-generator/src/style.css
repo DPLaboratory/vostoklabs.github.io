@@ -1111,6 +1111,17 @@ body.tutorial-active.focus-center #viewport {
 /* The base-shape drawer's one sentence of guidance. A muted paragraph is not a control, so
    an app class is right here — invariant #9 is about controls, and every control in that
    drawer is a kit component. */
+/* The knob rows under the shape grid. They are kit rows with no margins of their own, so
+   without this a Points stepper and a Sharpness slider sit flush against each other and read as
+   one control with four parts. Gap on the container, not the rows: the rows are replaced on
+   every pick, so anything set on them has to be re-set, and eventually is not. */
+.cg-pick__knobs {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+
 .cg-pick__hint {
   margin: var(--space-3) 0 var(--space-2);
   font-size: var(--fs-small);
@@ -1511,89 +1522,10 @@ body.tutorial-active.focus-center #viewport {
 /* Bottom-left credit block (MakerLab build only — see ui.ts). Sits outside the left
    panel's scroll area so it's pinned to the bottom corner, and is toned down to a
    two-line muted footer rather than the top-of-sidebar intro header. */
-#sidebar-left > .kc-credit-block {
-  flex: 0 0 auto;
-  gap: 1px;
-  margin-bottom: 0; /* .vl-app-header's 4px would leave a strip under the panel */
-  padding: 9px 16px 11px;
-  border-top: 1px solid var(--line);
-  background: var(--panel);
-}
-#sidebar-left > .kc-credit-block .vl-app-title {
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.2px;
-  color: var(--muted);
-  margin: 0;
-}
-/* The description belongs to the onboarding header, not to a footer credit. */
-#sidebar-left > .kc-credit-block .vl-app-subtitle { display: none; }
-#sidebar-left > .kc-credit-block .vl-app-credit { font-size: 11.5px; margin: 0; }
-#sidebar-left > .kc-credit-block .vl-credit-link { color: var(--muted); }
-#sidebar-left > .kc-credit-block .vl-credit-link:hover { color: var(--accent); }
-#sidebar-left > .kc-credit-block .vl-credit-logo { width: 12px; height: 12px; flex: 0 0 12px; }
-
 /* Open-a-project list — desktop host only, where saved projects are real stored things
    rather than a JSON file the user has to keep track of themselves. The rows themselves
    are listRow() from @vostok/ui-kit; only the scrolling wrapper is app-local. */
 .ck-project-list { display: flex; flex-direction: column; gap: 8px; max-height: 60vh; overflow-y: auto; }
-
-/* ---- SVG import preview -----------------------------------------------------------------
-   The file beside what the tracer made of it. When those two disagree, that difference IS the
-   "SVG import doesn't work" report, and seeing them side by side is the whole feature. */
-.cg-svgprev { display: flex; flex-direction: column; gap: 12px; }
-
-.cg-svgprev__panels { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-
-.cg-svgprev__panel { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
-
-.cg-svgprev__caption {
-  color: var(--muted);
-  font-size: 13px;
-  font-family: var(--font-display);
-  letter-spacing: 0.02em;
-}
-
-/* A checkerboard, so a white logo on a white ground is still visible — the case where "nothing
-   imported" and "it imported and is white" look identical. */
-.cg-svgprev__art {
-  aspect-ratio: 1;
-  display: grid;
-  place-items: center;
-  padding: 10px;
-  border-radius: 8px;
-  border: 1px solid var(--line);
-  background-color: var(--panel);
-  background-image:
-    linear-gradient(45deg, var(--line) 25%, transparent 25%),
-    linear-gradient(-45deg, var(--line) 25%, transparent 25%),
-    linear-gradient(45deg, transparent 75%, var(--line) 75%),
-    linear-gradient(-45deg, transparent 75%, var(--line) 75%);
-  background-size: 14px 14px;
-  background-position: 0 0, 0 7px, 7px -7px, -7px 0;
-}
-
-.cg-svgprev__art img,
-.cg-svgprev__art svg { max-width: 100%; max-height: 100%; }
-
-.cg-svgprev__empty { color: var(--muted); font-size: 13px; text-align: center; margin: 0; }
-
-.cg-svgprev__note { margin: 0; font-size: 13px; color: var(--muted); }
-.cg-svgprev__note--warn { color: var(--warn); }
-
-.cg-svgprev__parts {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  max-height: 220px;
-  overflow-y: auto;
-}
-
-/* Swatch · what the file did · what we will do. The picker is the decision, so it gets the
-   fixed width; the description takes what is left and ellipsises. */
-.cg-svgprev__part { display: flex; align-items: center; gap: 10px; font-size: 13px; }
-.cg-svgprev__what { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
-.cg-svgprev__mode { flex: 0 0 250px; }
 
 /* ---------------------------------------------------------------- the 2-D shape editor
    `.cg-shed` is a plain flex column: the three-column working area (`.cg-shed__grid`) on top,

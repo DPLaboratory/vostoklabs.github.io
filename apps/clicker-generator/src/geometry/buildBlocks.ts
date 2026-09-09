@@ -429,6 +429,44 @@ export function buildBlocks(
     return best;
   })();
 
+  /* The maker's mark, on EVERY block.
+
+     Letter-blocks mode had no mark at all: `brandMark` is applied in buildClicker, and this is a
+     separate build path that never read the field. A paid feature simply did not exist in one of
+     the app's five import modes, silently, and the only way to find out was to print one.
+
+     Every block rather than just the first, because in this mode each block is its own printed
+     piece a seller sells separately, and the licence copy the mark is sold under says exactly
+     that: "your mark on the underside of every piece".
+
+     Sizing is per block and clamped the same way buildClicker clamps it: 0.6 of the block's
+     shorter side, so the mark stays clear of the walls and of the corner rounding. A block too
+     small to carry a legible mark gets a smaller one rather than an overhanging one. */
+  function debossMark(block: Solid): Solid {
+    const mark = params.brandMark;
+    if (!mark || mark.rings.length === 0) return block;
+    const MARK_DEPTH = 0.6;
+    const bb = block.boundingBox();
+    const cx = (bb.min[0] + bb.max[0]) / 2;
+    const cy = (bb.min[1] + bb.max[1]) / 2;
+    const maxSide = Math.min(bb.max[0] - bb.min[0], bb.max[1] - bb.min[1]) * 0.6;
+    const size = Math.min(Math.max(3, mark.sizeMm), maxSide);
+    // Negated X is the mirror: the underside is read from below. One CrossSection with NonZero
+    // over all rings, so counters stay holes and overlapping shapes merge — see buildClicker.
+    const polys = mark.rings
+      .filter((ring) => ring.length >= 3)
+      .map((ring) => ring.map(([x, y]) => [-x * size + cx, y * size + cy] as [number, number]));
+    if (!polys.length) return block;
+    const section = track(CrossSection.ofPolygons(polys, 'NonZero'));
+    if (section.isEmpty()) return block;
+    // From just below the underside up to MARK_DEPTH above it: the overshoot guarantees a clean
+    // cut through the face rather than a coplanar one, which renders as z-fighting.
+    const cut = track(
+      track(section.extrude(MARK_DEPTH + 0.3)).translate([0, 0, bb.min[2] - 0.3]),
+    );
+    return track(block.subtract(cut));
+  }
+
   // The socket cut turns with its block, so the switch and the keycap on top of it have
   // to turn by the same amount to stay aligned with the stem cross.
   const cellRot: number[] = [];
@@ -446,6 +484,7 @@ export function buildBlocks(
     // being a shared instance.
     const loop = keychainLoop(i, N, mask, solid);
     if (loop) solid = track(solid.add(loop));
+    solid = debossMark(solid);
     parts.push(meshPart(solid, at(cell), 'body', 'base', params.bodyColorRgb, `block-${i}`));
     switchPlacements.push({ x: at(cell)[0], y: at(cell)[1], rotation: variant.rot });
   });

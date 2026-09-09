@@ -62,32 +62,6 @@
       }
       #viewport { position: relative; min-width: 0; overflow: hidden; background: var(--bg); }
       #viewport canvas { display: block; width: 100%; height: 100%; }
-      /* The busy chip. A row rather than a block: it carries a spinner, its text, and (for a
-         batch that can be stopped) a Cancel button. It used to be a bare word that appeared and
-         disappeared with no transition, which reads as a glitch rather than as work. */
-      #busy {
-        position: absolute; top: 14px; left: 50%; transform: translateX(-50%);
-        background: var(--panel); border: 1px solid var(--line);
-        padding: 5px 6px 5px 12px; border-radius: 20px; gap: 9px;
-        font-size: 12px; color: var(--text); display: none;
-        align-items: center; box-shadow: var(--shadow-toast);
-        animation: busyIn var(--dur-in-sm) var(--ease-standard);
-      }
-      @keyframes busyIn { from { opacity: 0; transform: translate(-50%, -4px); } to { opacity: 1; transform: translate(-50%, 0); } }
-      .busy-spinner {
-        width: 12px; height: 12px; flex: 0 0 12px; border-radius: 50%;
-        border: 2px solid var(--line); border-top-color: var(--accent);
-        animation: busySpin 700ms linear infinite;
-      }
-      @keyframes busySpin { to { transform: rotate(360deg); } }
-      /* Reduced motion takes the movement away, not the feedback: the chip still appears and
-         the ring still reads as busy, it just stops spinning. */
-      @media (prefers-reduced-motion: reduce) {
-        #busy { animation: none; }
-        .busy-spinner { animation: none; border-top-color: var(--accent); }
-      }
-      :root[data-motion='reduced'] .busy-spinner { animation: none; }
-      #busy .vl-btn { padding: 3px 10px; font-size: 11.5px; }
       .legend-section { display: flex; flex-direction: column; }
       #iconPanel:not([hidden]) { display: flex; flex-direction: column; }
       .section { border-top: 1px solid var(--line); padding: 14px 0; }
@@ -116,10 +90,13 @@
         background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px;
         padding: 8px 12px; cursor: pointer; color: var(--muted);
         width: 100%; text-align: left; font: inherit;
+        /* Border and press only. Fading the background from panel to accent WHILE fading
+           the label from muted to accent-text puts the text on top of a colour it was not
+           chosen against for the length of the transition — dark on dark, for long enough to
+           read as the button lagging behind the click. A selection is a state change, not a
+           movement: it lands at once. */
         transition:
     border-color var(--dur-hover) var(--ease-standard),
-    background-color var(--dur-hover) var(--ease-standard),
-    color var(--dur-hover) var(--ease-standard),
     transform var(--dur-press) var(--ease-standard);
       }
       .import-card:hover {
@@ -248,12 +225,10 @@
          Two fitted side by side; a third does not, and a swatch you have to scroll sideways to
          reach is a swatch nobody knows is there. Stacking also lets the labels read as a list
          of the parts being printed, which is what they are. */
-      .colors { display: grid; gap: 10px; }
-      .color { display: flex; align-items: center; gap: 10px; }
-      .color input[type=color] {
-        width: 34px; height: 28px; border: 1px solid var(--line); border-radius: 6px;
-        background: none; padding: 0; cursor: pointer;
-      }
+      /* Two swatch rows, stacked, from the kit's filamentRow(). Stacked rather than side by
+         side so the labels read as a list of the parts being printed, which is what they are. */
+      /* Two compact palette rows, at the spacing the clicker settled on for the same shape. */
+      .colors { display: grid; gap: 8px; }
       /* iOS-style toggle switches (mirror / shine-through) */
       .switch-row {
         display: flex; align-items: center; justify-content: space-between; gap: 12px;
@@ -282,6 +257,10 @@
 
       /* Inline "?" help badge — reveals its explanation in a hover/focus bubble so the
          longer descriptions no longer take up permanent vertical space. */
+      /* The badge and the word before it travel together. A greedy line breaker treats the
+         badge as its own item, so at a narrow panel it dropped onto a line of its own under the
+         label and read as a stray mark rather than as part of the sentence. */
+      .help-tail { white-space: nowrap; }
       .help-badge {
         display: inline-flex; align-items: center; justify-content: center;
         width: 15px; height: 15px; margin-left: 6px; padding: 0; flex: 0 0 15px;
@@ -324,43 +303,6 @@
          .fit-head and the .tol-btn look with the stem-fit block below it, because they are the
          same kind of control: a stepper, not a continuous value. */
       .nudge-block { margin-top: 14px; }
-      .nudge-row { display: flex; align-items: center; gap: 14px; }
-      .dpad {
-        flex: 0 0 auto;
-        display: grid;
-        grid-template-columns: repeat(3, 30px);
-        grid-template-rows: repeat(3, 30px);
-        gap: 3px;
-      }
-      .dpad-btn {
-        display: inline-flex; align-items: center; justify-content: center;
-        padding: 0; background: var(--panel); border: 1px solid var(--line);
-        border-radius: 7px; color: var(--text); cursor: pointer;
-        transition:
-    border-color var(--dur-hover) var(--ease-standard),
-    color var(--dur-hover) var(--ease-standard),
-    background var(--dur-hover) var(--ease-standard);
-      }
-      .dpad-btn svg { width: 17px; height: 17px; }
-      .dpad-btn:hover { border-color: var(--accent); color: var(--accent); }
-      .dpad-btn:focus-visible { outline: none; box-shadow: var(--ring); border-color: var(--accent); }
-      .dpad-btn:active { background: var(--panel-2); }
-      .dpad-btn--up { grid-area: 1 / 2; }
-      .dpad-btn--left { grid-area: 2 / 1; }
-      .dpad-btn--center { grid-area: 2 / 2; color: var(--muted); }
-      .dpad-btn--right { grid-area: 2 / 3; }
-      .dpad-btn--down { grid-area: 3 / 2; }
-
-      .nudge-vals { flex: 1; min-width: 0; display: grid; gap: 7px; }
-      .nudge-val { display: grid; grid-template-columns: 14px 1fr 20px; align-items: center; gap: 7px; }
-      .nudge-val > label { color: var(--muted); font-size: 12px; }
-      .nudge-val input[type=number] {
-        width: 100%; min-width: 0; background: var(--panel-2); border: 1px solid var(--line);
-        color: var(--text); border-radius: 6px; padding: 4px 5px; text-align: right;
-        font-family: inherit; font-size: 14px; font-variant-numeric: tabular-nums;
-      }
-      .nudge-val input[type=number]:disabled { opacity: .45; }
-      .nudge-val .unit { font-size: 11px; color: var(--muted); }
 
       .fit-block {
         margin-top: 14px; padding-top: 13px;
@@ -420,73 +362,13 @@
       code { background: var(--panel-2); padding: 1px 5px; border-radius: 4px; }
 
 
-      /* Bottom-left credit block (MakerLab build only — see main.js). Sits outside the
-         left panel's scroll area so it's pinned to the bottom corner, and is toned down
-         to a two-line muted footer rather than the top-of-sidebar intro header. */
+      /* The credit strip is the kit's panelCredit(), pinned outside the left panel's
+         scroll area so it stays in the bottom corner. Empty only if a host removed it. */
       #keycapCredit:empty { display: none; }
-      #keycapCredit .kc-credit-block {
-        flex: 0 0 auto; gap: 1px;
-        margin-bottom: 0; /* .vl-app-header's 4px would leave a strip under the panel */
-        padding: 9px 16px 11px;
-        border-top: 1px solid var(--line);
-        background: var(--panel);
-      }
-      #keycapCredit .vl-app-title {
-        font-size: 12px; font-weight: 600; letter-spacing: .2px;
-        color: var(--muted); margin: 0;
-      }
-      /* The description belongs to the onboarding header, not to a footer credit. */
-      #keycapCredit .vl-app-subtitle { display: none; }
-      #keycapCredit .vl-app-credit { font-size: 11.5px; margin: 0; }
-      #keycapCredit .vl-credit-link { color: var(--muted); }
-      #keycapCredit .vl-credit-link:hover { color: var(--accent); }
-      #keycapCredit .vl-credit-logo { width: 12px; height: 12px; flex: 0 0 12px; }
 
 
       /* Open-a-project list — desktop host only, where saved projects are real stored
          things rather than a JSON file the user has to keep track of themselves. */
-      /* ---- the SVG import preview: the file beside what the tracer made of it. When those
-         two disagree, that difference IS the "SVG import doesn't work" report. */
-      .kc-svgprev { display: flex; flex-direction: column; gap: 12px; }
-      .kc-svgprev__panels { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-      .kc-svgprev__panel { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
-      .kc-svgprev__caption {
-        color: var(--muted);
-        font-size: 13px;
-        font-family: var(--font-display);
-        letter-spacing: 0.02em;
-      }
-      /* A checkerboard, so a white logo on a white ground is still visible — the case where
-         "nothing imported" and "it imported and is white" look identical. */
-      .kc-svgprev__art {
-        aspect-ratio: 1;
-        display: grid;
-        place-items: center;
-        padding: 10px;
-        border-radius: 8px;
-        border: 1px solid var(--line);
-        background-color: var(--panel);
-        background-image:
-          linear-gradient(45deg, var(--line) 25%, transparent 25%),
-          linear-gradient(-45deg, var(--line) 25%, transparent 25%),
-          linear-gradient(45deg, transparent 75%, var(--line) 75%),
-          linear-gradient(-45deg, transparent 75%, var(--line) 75%);
-        background-size: 14px 14px;
-        background-position: 0 0, 0 7px, 7px -7px, -7px 0;
-        color: var(--text);
-      }
-      .kc-svgprev__art img,
-      .kc-svgprev__art svg { max-width: 100%; max-height: 100%; }
-      .kc-svgprev__empty { color: var(--muted); font-size: 13px; text-align: center; margin: 0; }
-      .kc-svgprev__note { margin: 0; font-size: 13px; color: var(--muted); }
-      .kc-svgprev__note--warn { color: var(--warn); }
-      .kc-svgprev__parts { display: flex; flex-direction: column; gap: 4px; max-height: 220px; overflow-y: auto; }
-      /* What the file did · what we will do. The picker is the decision, so it gets the fixed
-         width; the description takes what is left and ellipsises. */
-      .kc-svgprev__part { display: flex; align-items: center; gap: 10px; font-size: 13px; }
-      .kc-svgprev__what { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
-      .kc-svgprev__mode { flex: 0 0 250px; }
-
       .kc-project-list { display: flex; flex-direction: column; gap: 8px; max-height: 60vh; overflow-y: auto; }
       .kc-project-row { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; padding: 8px; }
       .kc-project-thumb {

@@ -22,7 +22,8 @@ import '@vostok/plates/plates.css';
 import {
   topbarLinks, generatorHeader, qualityCallout, sidebarFooter, dialog, isDesktop, closeAllDialogs,
   promptDialog, hostAssetUrl, rememberFile, bindExternalLinks, chooseFile,
-  button, dropZone, toast, changelogButton, themeColorHex, openLicenseModal, licenseReminderToast,
+  button, dropZone, toast, themeColorHex, openLicenseModal, licenseReminderToast,
+  nudgePad, busyChip, panelCredit, paletteRow,
 } from '@vostok/ui-kit';
 import { mountPlatePicker, loadPlateChoice, getPlate } from '@vostok/plates';
 import { createBuildPlate } from '@vostok/plates/three';
@@ -55,6 +56,7 @@ import {
 // public build resolves this to a no-op stub and never needs those files to exist.
 import { mountProFeatures } from 'virtual:pro-pack';
 import './style.css';
+import { ICONS } from '@vostok/ui-kit';
 import { CHANGELOG } from './changelog';
 import { TEMPLATE } from './template.js';
 import { setAssetBase, assetUrl } from './assets.js';
@@ -105,23 +107,21 @@ export function mount(container, host) {
   // Mount header and footer components
   const oldHeader = $('keycapAppHeader');
   if (oldHeader) {
-    const header = generatorHeader({
-      title: 'Keycap Legend Generator',
-      description: 'Pick an icon or letter, size it, export a two-color 3MF.',
-    });
     if (MAKERLAB) {
-      // MakerWorld review feedback (2026-07-27): the Vostok Labs intro block is the most
+      // MakerWorld review feedback (2026-07-27): the Vostok Labs intro block was the most
       // prominent thing in the embed on first load, and the host would rather off-platform
-      // promotion not sit in that spot. In the MakerLab build it moves to the BOTTOM-LEFT
-      // — pinned below the left panel's scroll area — and is demoted to a compact muted
-      // credit line (see .kc-credit-block in index.html). The host page already shows the
-      // app's name, so the top-left heading isn't needed here.
-      // The public build keeps the original top-left header.
-      header.classList.add('kc-credit-block');
+      // promotion not sit in that spot. The host page already shows the app's name, so in
+      // this build the header simply goes — the credit strip pinned at the foot of the panel
+      // (panelCredit, below) carries the byline in both builds now.
       oldHeader.remove();
-      $('keycapCredit')?.append(header);
     } else {
-      oldHeader.replaceWith(header);
+      oldHeader.replaceWith(generatorHeader({
+        title: 'Keycap Legend Generator',
+        description: 'Pick an icon or letter, size it, export a two-color 3MF.',
+        // The byline lives in the credit strip at the foot of this panel. Saying "Made by
+        // Vostok Labs" at both ends of one column is one time too many.
+        hideCredit: true,
+      }));
     }
   }
 
@@ -137,12 +137,27 @@ export function mount(container, host) {
       // The host draws Save and Open itself when it owns projects; two Save buttons that
       // do different things is worse than either one alone. `Boolean(...)`, not `isDesktop()`:
       // a desktop host without the capability still needs these.
-      hostOwnsProjects: Boolean(host?.registerProject),
-      // The kit turns a bare format label into "Download 3MF" (or "Export 3MF" on the desktop).
-      // Inside the MakerLab embed nothing is downloaded — it goes to the host — and a label
-      // that already starts with "Export" is passed through untouched, which is the seam the
-      // kit provides for exactly this.
-      formats: [{ id: '3mf', label: MAKERLAB ? 'Export to MakerWorld' : '3MF' }],
+      //
+      // Also true in the MakerLab embed, where nobody owns them: the sandbox has downloads
+      // off, so Save would produce nothing and Load has nothing to read back. The kit then
+      // draws only Help and the theme toggle — which is what the live listing has always
+      // shown. This used to be done by removing "the first action row" after the fact, and
+      // when the kit folded its two rows into one that took Help and Light mode with it.
+      hostOwnsProjects: MAKERLAB || Boolean(host?.registerProject),
+      // The label names the user's FILE, and the verb names what happens to it.
+      //
+      // Two wrong answers were tried first. "Export to MakerWorld" named the wrong platform
+      // outright — the host here is MakerLab. "Export to MakerLab" named the right one, but
+      // naming our host describes our side of the transaction; the user came for a 3MF.
+      // Plain "Download 3MF" is the other miss: inside the embed nothing is downloaded, the
+      // file goes to the host, and a button that says otherwise is the one thing this label
+      // has to stop doing.
+      //
+      // "Export 3MF" is the file plus an honest verb. The kit passes a label already starting
+      // with "Export" through untouched and turns a bare one into "Download 3MF", so the web
+      // build keeps the word that is true there. Where it went is the status line's job, and
+      // it says so.
+      formats: [{ id: '3mf', label: MAKERLAB ? 'Export 3MF' : '3MF' }],
       // Always travels. A paid mode may have relabelled this button "Unlock Pro — $9.99",
       // but that is a label: the click goes down the same path either way and meets the gate at
       // the far end, which is the only thing that decides whether paid work runs.
@@ -169,7 +184,7 @@ export function mount(container, host) {
           title: 'Keycap Legend Generator help',
           content: document.createTextNode(
             MAKERLAB
-              ? 'Pick an icon or custom letter, customize size, depth, rotation and stem clearance, then send the finished keycap to MakerWorld with the button above.'
+              ? 'Pick an icon or custom letter, customize size, depth, rotation and stem clearance, then send the finished keycap to MakerLab with the button above.'
               : 'Pick an icon or custom letter, customize size, depth, rotation and stem clearance, then click Download 3MF to export a print-ready file for your slicer.',
           ),
           actions: [{ label: 'Got it', primary: true }],
@@ -177,9 +192,6 @@ export function mount(container, host) {
       },
       themeStorageKey: 'keycap_theme',
     });
-    if (MAKERLAB) {
-      footer.querySelector('.vl-action-row')?.remove();
-    }
     keycapFooter.replaceWith(footer);
     // The one primary action, whatever the mode. Set mode relabels it rather than adding a
     // second export button somewhere else — there is one place to press to get a file.
@@ -187,10 +199,9 @@ export function mount(container, host) {
     exportPanelEl = footer.querySelector('.vl-export');
   }
 
-  const busyEl = $('busy');
-  const busyTextEl = $('busyText');
-  const busyCancelEl = $('busyCancel');
+  const busyEl = busyChip();
   const statusEl = $('status');
+  $('viewport').append(busyEl);
 
   /**
    * The one way the busy chip is shown or hidden.
@@ -201,25 +212,8 @@ export function mount(container, host) {
    * A batch that can be stopped passes one in; the live rebuild is 200ms and passes none.
    */
   function setBusyState(text, onCancel) {
-    busyCancelEl.replaceChildren();
-    if (text == null) {
-      busyEl.style.display = 'none';
-      return;
-    }
-    busyTextEl.textContent = text;
-    if (onCancel) {
-      const btn = button({
-        label: 'Cancel',
-        emphasis: 'ghost',
-        onClick: () => {
-          btn.disabled = true;
-          btn.setLabel('Cancelling…');
-          onCancel();
-        },
-      });
-      busyCancelEl.append(btn);
-    }
-    busyEl.style.display = 'flex';
+    if (text == null) busyEl.hide();
+    else busyEl.show(text, onCancel);
   }
 
   function setStatus(msg, kind = '') {
@@ -278,8 +272,8 @@ export function mount(container, host) {
   group.rotation.x = -Math.PI / 2;
   scene.add(group);
 
-  const capMat = new THREE.MeshStandardMaterial({ color: 0x1c1c1e, roughness: 0.55, metalness: 0.0 });
-  const logoMat = new THREE.MeshStandardMaterial({ color: 0xf2f2f2, roughness: 0.5, metalness: 0.0 });
+  const capMat = new THREE.MeshStandardMaterial({ color: 0x161616, roughness: 0.55, metalness: 0.0 });
+  const logoMat = new THREE.MeshStandardMaterial({ color: 0xf7f7f5, roughness: 0.5, metalness: 0.0 });
   const capMesh = new THREE.Mesh(undefined, capMat);
   const logoMesh = new THREE.Mesh(undefined, logoMat);
   /**
@@ -473,7 +467,34 @@ export function mount(container, host) {
 
   // The two block buttons in the panels. Kit `button()`s built into their mount points,
   // keeping their ids: everything below still finds them with $('exportBlank') / $('alphabetSet').
-  const exportBlankBtn = button({ label: 'Export blank keycap', emphasis: 'secondary', block: true });
+  /** Millimetres per arrow press. Declared up here because the pad below reads it. */
+  const NUDGE_STEP = 0.5;
+
+  /* The nudge pad, before the C block below: it BUILDS #offxNum / #offyNum, and `link()`
+     binds them by id. */
+  const nudge = nudgePad({
+    step: NUDGE_STEP,
+    x: { id: 'offxNum', label: 'X' },
+    y: { id: 'offyNum', label: 'Y' },
+    // The app writes, not the pad: `nudgeBy` clamps against the hidden per-cap ranges, which
+    // the pad cannot see (a legend reaches the edge of a 6.25u spacebar, not of a 1u cap).
+    onNudge: (dx, dy) => nudgeBy(dx, dy),
+    onReset: () => {
+      C.offx.set(0);
+      C.offy.set(0);
+      announce(['offx', 'offy']);
+      scheduleRegen();
+    },
+  });
+  $('nudgePadMount').replaceWith(nudge);
+
+  const exportBlankBtn = button({
+    label: 'Export blank keycap',
+    emphasis: 'secondary',
+    block: true,
+    icon: ICONS.download,
+    title: 'The bare cap and stem, no legend, in one colour',
+  });
   exportBlankBtn.id = 'exportBlank';
   exportBlankBtn.disabled = true;
   $('exportBlankMount').replaceWith(exportBlankBtn);
@@ -512,7 +533,6 @@ export function mount(container, host) {
   // announces — so everything already listening for a nudge hears it exactly as it would from a
   // dragged slider. That includes a Pro mode that has the nudge pointed at a different legend,
   // which is why this must not write `currentOpts` directly.
-  const NUDGE_STEP = 0.5;
   function nudgeBy(dx, dy) {
     const move = (ctl, id, d) => {
       if (!d) return;
@@ -525,16 +545,11 @@ export function mount(container, host) {
     announce(['offx', 'offy']); // the range's own listener syncs its number box
     scheduleRegen();
   }
-  $('nudgeUp').addEventListener('click', () => nudgeBy(0, NUDGE_STEP));
-  $('nudgeDown').addEventListener('click', () => nudgeBy(0, -NUDGE_STEP));
-  $('nudgeLeft').addEventListener('click', () => nudgeBy(-NUDGE_STEP, 0));
-  $('nudgeRight').addEventListener('click', () => nudgeBy(NUDGE_STEP, 0));
-  $('nudgeCenter').addEventListener('click', () => {
-    C.offx.set(0);
-    C.offy.set(0);
-    announce(['offx', 'offy']);
-    scheduleRegen();
-  });
+  /* The kit's nudgePad(): the d-pad and the X/Y fields as one control. It builds the two
+     number inputs, so they keep the ids the rest of this file and both paid modes already
+     bind to (`offxNum` / `offyNum`) — the pad is a new way to reach the same values, not a
+     new place for them to live. Arrow presses come back through `onMove` and go out through
+     `nudgeBy`, which is what clamps against the hidden per-cap ranges. */
 
   $('mirror').addEventListener('change', scheduleRegen);
   $('homingBump').addEventListener('change', scheduleRegen);
@@ -551,13 +566,45 @@ export function mount(container, host) {
   $('capColor').addEventListener('input', () => { capMat.color.set($('capColor').value); });
   $('logoColor').addEventListener('input', () => { logoMat.color.set($('logoColor').value); });
 
+  /* Filament swatches, the same shelf the clicker picks from.
+
+     A `<input type="color">` is the wrong instrument for a printed object: it asks the user
+     to invent a colour out of sixteen million, when what they are choosing is a spool they
+     own. The two inputs are still here, hidden, because they are the state everything else
+     reads — `$('capColor').value`, the project file, and both paid modes, which listen for
+     their `input` event. Each row writes its hex into one and announces it, so a swatch press
+     and a typed hex are the same event to everything downstream. */
+  function paletteFor(id, label, mount, labelId) {
+    const input = $(id);
+    const row = paletteRow({
+      label,
+      labelId,
+      value: input.value,
+      onChange: (hex) => {
+        if (hex.toLowerCase() === input.value.toLowerCase()) return;
+        input.value = hex;
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+      },
+    });
+    $(mount).replaceWith(row);
+    // A project load, or a reset, writes the input directly — the swatches follow.
+    input.addEventListener('input', () => row.setValue(input.value));
+    return row;
+  }
+  // `logoColorLabel` is the id a paid mode renames ("Legend" -> "Legend 1"), so the row is
+  // asked for it rather than reached into afterwards.
+  const capColorRow = paletteFor('capColor', 'Keycap', 'capColorMount');
+  const logoColorRow = paletteFor('logoColor', 'Legend', 'logoColorMount', 'logoColorLabel');
+
   // ---------------------------------------------------------------- resets
   // Stock values for the per-section reset buttons. `size` is replaced at boot
   // once we know the sensible default for this cap's geometry.
   const DEFAULTS = {
     size: 8, depth: 0.5, rot: 0, offx: 0, offy: 0, stemTol: 0,
     mirror: false, through: false, single: false, homingBump: false,
-    capColor: '#1c1c1e', logoColor: '#f2f2f2',
+    // Both are shelf colours from the kit's filament list, so the palette opens with a
+    // swatch selected rather than inventing a custom one for a hex nobody prints.
+    capColor: '#161616', logoColor: '#f7f7f5',
   };
 
   // Reflect the current shine-through / single-colour state on dependent inputs.
@@ -566,7 +613,11 @@ export function mount(container, host) {
   function applyModeFlags() {
     $('depth').disabled = $('through').checked;
     $('depthNum').disabled = $('through').checked;
+    // Both: the hidden input is what a paid mode reads, the row is what the user sees. Only
+    // disabling the input left the swatches live in single-colour mode, offering a choice
+    // that no longer prints.
     $('logoColor').disabled = $('single').checked;
+    logoColorRow.setDisabled($('single').checked);
     updateStemMaterial();
   }
 
@@ -1477,7 +1528,7 @@ export function mount(container, host) {
         setStatus(`Generating alphabet set… ${ch} (${i + 1}/26)`);
         // Text only: rebuilding the chip here would throw away the Cancel button's own
         // "Cancelling…" state twenty-six times.
-        busyTextEl.textContent = `generating ${ch} (${i + 1}/26)…`;
+        busyEl.setText(`generating ${ch} (${i + 1}/26)…`);
         await new Promise((r) => setTimeout(r, 0)); // let the spinner/status paint
 
         const legend = parseLetter(ch, fontId, 1);
@@ -1613,6 +1664,8 @@ export function mount(container, host) {
   function setNudgeRange(rangeId, numId, m) {
     $(rangeId).min = -m; $(rangeId).max = m;
     $(numId).min = -m; $(numId).max = m;
+    // The pad clamps typed values against the same limit.
+    nudge.setRange(numId === 'offxNum' ? 'x' : 'y', m);
   }
 
   function setKeycap(kc) {
@@ -1937,11 +1990,12 @@ export function mount(container, host) {
            */
           ownLegendSink: singleCapSink,
           /**
-           * What the primary button says in single mode when nothing is locked. The modes used
-           * to restore the literal 'Download 3MF', which is the wrong verb in the embed: there
-           * the file goes to the host and nothing is downloaded at all.
+           * What the primary button says in single mode when nothing is locked, and what every
+           * paid mode restores when it hands the button back (see panel.js and setMode.js).
+           * One constant rather than a literal per mode, so the button cannot come back from
+           * Full set wearing a different name than it went in with.
            */
-          defaultExportLabel: MAKERLAB ? 'Export to MakerWorld' : 'Download 3MF',
+          defaultExportLabel: MAKERLAB ? 'Export 3MF' : 'Download 3MF',
           /** The picker's own controls, so a sink can show the selected key's legend. */
           legendUI: {
             setType: setLegendMode,
@@ -2121,12 +2175,17 @@ export function mount(container, host) {
     $('qualityCalloutMount')?.remove();
   }
 
-  // ------------------------------------------------------- updates
-  // The same Updates drawer the clicker and foldbox carry: a button the user presses when they
-  // want to know whether the thing they reported is fixed. It replaced a modal that opened
-  // itself on load — over an app that had not finished loading — and told first-time visitors
-  // what had changed "since you were last here".
-  $('updatesMount').replaceWith(changelogButton({ entries: CHANGELOG, title: 'Keycap updates' }));
+  // ------------------------------------------------------- credit strip + updates
+  // Pinned to the foot of the left panel, outside its scroll: who made this, and what changed.
+  // Updates rides here rather than as a full-width button among the controls — it is the
+  // answer to "has my bug been fixed", a question people ask rather than one to interrupt
+  // them with, and next to the byline it reads as the version of the thing you are using.
+  $('keycapCredit')?.append(panelCredit({
+    // The name goes in both builds. Two lines is the shape of this strip — it is what fills
+    // its left half and leaves the right half for the button.
+    title: 'Keycap Legend Generator',
+    updates: { entries: CHANGELOG, title: 'Keycap updates' },
+  }));
 
   // ------------------------------------------------------- theme (viewport sync)
   // The shared ui-kit sidebar footer owns the light/dark toggle; it flips
@@ -2334,8 +2393,11 @@ export function mount(container, host) {
     if (loaded.rot != null) { $('rot').value = loaded.rot; $('rotNum').value = loaded.rot; }
     if (loaded.offx != null) { $('offx').value = loaded.offx; $('offxNum').value = loaded.offx; }
     if (loaded.offy != null) { $('offy').value = loaded.offy; $('offyNum').value = loaded.offy; }
-    if (loaded.capColor) { $('capColor').value = loaded.capColor; capMat.color.set(loaded.capColor); }
-    if (loaded.logoColor) { $('logoColor').value = loaded.logoColor; logoMat.color.set(loaded.logoColor); }
+    // `.value = ` fires nothing, and the swatch rows follow the inputs by listening for
+    // `input` — so a loaded project used to leave both palettes showing the old colour while
+    // the preview showed the new one.
+    if (loaded.capColor) { $('capColor').value = loaded.capColor; capMat.color.set(loaded.capColor); capColorRow.setValue(loaded.capColor); }
+    if (loaded.logoColor) { $('logoColor').value = loaded.logoColor; logoMat.color.set(loaded.logoColor); logoColorRow.setValue(loaded.logoColor); }
     if (loaded.mirror != null) $('mirror').checked = loaded.mirror;
     if (loaded.homingBump != null) $('homingBump').checked = loaded.homingBump;
     if (loaded.through != null) $('through').checked = loaded.through;

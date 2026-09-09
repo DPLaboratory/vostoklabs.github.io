@@ -26,7 +26,7 @@ import {
 } from '@vostok/ui-kit';
 import './style.css';
 import { createStore } from './store/store';
-import { createViewer } from './viewer/viewer';
+import { createViewer, type SectionAxis } from './viewer/viewer';
 import { mountPlatePicker } from '@vostok/plates';
 import { createUi, type UiState } from './ui/ui';
 import { loadFileToImage, type RgbaImage } from './image/decode';
@@ -49,6 +49,8 @@ import { LUCIDE_ICONS, buildSvg } from './image/lucideIcons';
 // SDK glue in the MakerWorld build (`--mode makerworld`) — see vite.config.ts.
 import {
   MAKERLAB,
+  SELLER_PACK,
+  ensureAccess,
   initMakerlab,
   isReady as mlReady,
   can as mlCan,
@@ -71,7 +73,7 @@ import type {
 import { FILAMENTS, type PreprocessParams } from './types';
 
 import type { DesktopHost } from '@vostok/ui-kit';
-import { closeAllDialogs, dialog } from '@vostok/ui-kit';
+import { closeAllDialogs, dialog, toast } from '@vostok/ui-kit';
 import { setAssetBase, assetBase } from './assets';
 import { TEMPLATE } from './template';
 
@@ -186,6 +188,10 @@ export function mount(container: HTMLElement, host?: DesktopHost): () => void {
     removeBg: true,
     view: 'exploded',
     showSwitch: true,
+    // Cut-open state. Viewport only: not in HISTORY_FIELDS, not in a saved project.
+    sectionOn: false,
+    sectionAxis: 'y' as SectionAxis,
+    sectionPos: 0,
     importMode: 'image', // Land on the Image tab by default
     currentIconName: 'circle',
     colorMode: 'normal',
@@ -240,6 +246,43 @@ export function mount(container: HTMLElement, host?: DesktopHost): () => void {
    *  every call site is what makes "the paid features are simply not in this build" the
    *  default rather than a special case. */
   let proPanel: ProPanel | null = null;
+
+  /* ------------------------------------------------------- MakerLab handshake
+
+     FIRST, and deliberately so. This used to be the last thing `mount()` did, roughly 2,400
+     lines below here, after the whole sidebar was built, the three.js viewer was constructed,
+     the CSG worker was spawned and its WASM compiled, and the default model was loaded and
+     plated. The host does not wait that long: it gives the app a window to say hello and then
+     gives up with "Connecting to the app timed out. Please check your network and refresh the
+     page." — which is what it was doing every time.
+
+     The failure is quiet in the worst way. Nothing looks broken: the app renders, every control
+     works, and Export falls back to a plain download because `mlReady()` is false. The only
+     visible symptom is that `context` is null, so `paymentInfo` has nothing to read, so
+     `currentPrice` answers null, so the licence button loses its price line and the licence
+     dialog loses its price block entirely. Three rounds of this were spent looking for the
+     price bug inside the paywall, and the price was never the thing that was broken.
+
+     Nothing here needs the UI. `store` exists (it is built above), the handshake is a postMessage
+     round trip, and every consumer re-checks `isReady()` at the moment it acts rather than
+     capturing anything now. So it costs nothing to do first, and doing it first is the fix. */
+  if (MAKERLAB) {
+    initMakerlab({
+      onDisconnect: () => store.set({ status: 'Disconnected from the MakerLab host.' }),
+    }).then((ctx) => {
+      if (!ctx) return;
+      console.log('[MakerLab] connected, capabilities:', (ctx as Record<string, unknown>).capabilities);
+      /* Repaint, because everything paid was drawn before this answer arrived.
+
+         `mount()` builds the whole sidebar synchronously, so the handshake CANNOT have resolved
+         by the time the licence button and the Seller tools panel are first painted — not a race,
+         just ordering. Until this landed, `isUnlocked` was false and `currentPrice` null, so an
+         OWNER got a greyed, `inert` panel under a button reading "Unlock lifetime commercial
+         licence", and the panel only repaints on store changes, so it stayed that way until they
+         happened to move a control. */
+      proPanel?.refresh();
+    });
+  }
   /** Rings of the seasonal-pack silhouette in use, if any. Out of the store deliberately: it
    *  is thousands of coordinates, it is derived from `packShapeToken`, and every store patch
    *  is a full object spread. */
@@ -288,9 +331,100 @@ export function mount(container: HTMLElement, host?: DesktopHost): () => void {
   let currentSvgName = '';
   let currentIconText = '';
   let currentIconName = '';
+  /** The name of the picture the user brought in, kept only so the export can be called after
+   *  it. `loadedSampleId` cannot do this job: it names the SELECTED TILE, and an upload
+   *  correctly clears it — which left every design a user actually made exporting as the bare
+   *  `clicker.3mf` while only the demos got a real name. */
+  let currentImageName = '';
   let currentText = 'Custom\nText';
   let currentFontId = 'helvetiker-regular';
   let isInitialLoad = true;
+
+  /* The name a downloaded file gets.
+     Every export used to be the literal `clicker.3mf`, so filling five orders in an evening
+     left you with clicker.3mf, clicker(1).3mf, clicker(2).3mf and no way to tell which was
+     whose. The name now comes from whatever identifies the design in the mode it was made
+     in, and falls back to the old literal when nothing does, so nothing that had a good name
+     before loses one.
+     The slug is local on purpose. The only other one in this app lives in `src/pro/`, which
+     is paid, gitignored source excluded from the public bundle — importing it from free code
+     would either break a fresh public clone's build or quietly bundle paid source into the
+     public site. */
+  const slugify = (s: string, max = 28): string =>
+    s
+      .normalize('NFKD')
+      .replace(/[^a-zA-Z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, max)
+      .replace(/-+$/g, '')
+      .toLowerCase();
+
+  function designFileBase(): string {
+    const s = store.get();
+    let label = '';
+    switch (s.importMode) {
+      case 'text':
+        label = currentText;
+        break;
+      case 'blocks':
+        label = s.blockSlots
+          .map((slot) => (slot.kind === 'char' ? slot.ch : slot.kind === 'icon' ? slot.name : ''))
+          .join('');
+        break;
+      case 'svg':
+        label = currentSvgName;
+        break;
+      case 'icon':
+        label = currentIconName;
+        break;
+      case 'image':
+        // The tile's name when a sample is what's loaded, the user's own filename otherwise.
+        label = s.loadedSampleId ?? currentImageName;
+        break;
+    }
+    const slug = slugify(label);
+    return slug ? `clicker-${slug}` : 'clicker';
+  }
+
+  /** Base64 without a FileReader round trip. Chunked because `String.fromCharCode(...bytes)`
+   *  blows the argument limit on anything bigger than a small image. */
+  function bytesToBase64(bytes: Uint8Array): string {
+    let s = '';
+    for (let i = 0; i < bytes.length; i += 0x8000) {
+      s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+    }
+    return btoa(s);
+  }
+
+  /** The two cover sizes a 3MF carries: the card image, and the list-row thumbnail. A failed
+   *  capture is not a failed export — it just means this file has no cover. */
+  async function coverImages() {
+    const coverPng = (await viewer.renderCoverPng()) ?? undefined;
+    if (!coverPng) return {};
+    return { coverPng, coverSmallPng: await shrinkPng(coverPng, 128) };
+  }
+
+  /** The list-row thumbnail, by downscaling the cover rather than taking a second shot.
+   *  A second WebGL capture costs another framebuffer reallocation — measured at ~2s under
+   *  software rendering, and the same cost at 128px as at 512px, since it is the realloc and
+   *  not the pixels — and a 128px render aliases far worse than a filtered downscale of one.
+   *  Undefined on failure; the exporter then falls back to the full-size cover. */
+  async function shrinkPng(png: Uint8Array, edge: number): Promise<Uint8Array | undefined> {
+    try {
+      const bmp = await createImageBitmap(new Blob([png as unknown as BlobPart], { type: 'image/png' }));
+      const c = document.createElement('canvas');
+      c.width = edge;
+      c.height = edge;
+      const g = c.getContext('2d')!;
+      g.imageSmoothingQuality = 'high';
+      g.drawImage(bmp, 0, 0, edge, edge);
+      bmp.close();
+      const blob = await new Promise<Blob | null>((r) => c.toBlob(r, 'image/png'));
+      return blob ? new Uint8Array(await blob.arrayBuffer()) : undefined;
+    } catch {
+      return undefined;
+    }
+  }
 
   const hasImage = () => originalImage !== null;
   function cloneImage(img: RgbaImage): RgbaImage {
@@ -330,6 +464,9 @@ export function mount(container: HTMLElement, host?: DesktopHost): () => void {
       // rather than waiting for the build to settle, since an upload that fails to decode
       // must not leave a stale sample looking selected either (audit #2).
       store.set({ loadedSampleId: null });
+      // Drop the extension: `samurai-mask.png` should export as `clicker-samurai-mask.3mf`,
+      // not `clicker-samurai-mask-png.3mf` — the slug turns the dot into a hyphen.
+      currentImageName = file.name.replace(/\.[^.]+$/, '');
       openWizard(() => loadFileToImage(file));
     },
     onSample: (load, label) => {
@@ -625,11 +762,25 @@ export function mount(container: HTMLElement, host?: DesktopHost): () => void {
       store.set({ view: mode });
       viewer.setView(mode);
     },
+    onSectionEnabled: (on) => {
+      store.set({ sectionOn: on });
+      // Push the axis/position the two controls are showing before turning the cut on, so it
+      // lands where the UI says rather than wherever the viewer was last told.
+      const st = store.get();
+      viewer.setSection(st.sectionAxis, st.sectionPos);
+      viewer.setSectionEnabled(on);
+    },
     onShowSwitch: (on) => {
       store.set({ showSwitch: on });
       viewer.showSwitch(on);
     },
-    onSection: (axis, pos) => viewer.setSection(axis, pos),
+    onSection: (axis, pos) => {
+      // The store has to carry it too: the two controls seed themselves from state on every
+      // sync, so a value the viewer knows and the store does not gets reverted on the next
+      // rebuild.
+      store.set({ sectionAxis: axis, sectionPos: pos });
+      viewer.setSection(axis, pos);
+    },
     onExport: async () => {
       if (!latestParts.length) return;
       if (MAKERLAB && mlReady() && mlCan('export')) {
@@ -641,13 +792,16 @@ export function mount(container: HTMLElement, host?: DesktopHost): () => void {
         status('Sending to MakerLab…');
         try {
           const { obj, mtl } = buildObjMtl(latestParts, 'clicker.mtl');
-          // Capture a cover image from the WebGL canvas.
-          const canvas = container.querySelector('canvas') as HTMLCanvasElement | null;
-          const coverImage = canvas?.toDataURL('image/png') ?? '';
+          // The same framed cover the downloaded 3MF gets. This used to be a bare
+          // `canvas.toDataURL()` with no render in front of it — it survived only because the
+          // renderer keeps its drawing buffer, and it handed MakerWorld the whole viewport:
+          // build plate, grid, and the model wherever the user had last dragged it.
+          const png = await viewer.renderCoverPng();
+          const coverImage = png ? 'data:image/png;base64,' + bytesToBase64(png) : '';
           const result = await sdkExport({
             artifacts: [
               {
-                fileName: 'clicker.obj',
+                fileName: `${designFileBase()}.obj`,
                 format: 'obj',
                 buffer: objToArrayBuffer(obj),
                 mtl,
@@ -671,17 +825,40 @@ export function mount(container: HTMLElement, host?: DesktopHost): () => void {
         // The whole reason the desktop bundle exists: the file does not land in Downloads
         // for you to go and find, it lands in the library and shows up in the grid.
         try {
+          const name = `${designFileBase()}.3mf`;
           const { indexed } = await host.exportToLibrary(
-            { name: 'clicker.3mf', bytes: buildThreeMF(latestParts) },
+            { name, bytes: buildThreeMF(latestParts, await coverImages()) },
             { designer: 'Clicker Generator' },
           );
-          store.set({ status: indexed ? 'Exported to your library ✓' : 'Exported as clicker.3mf ✓' });
+          store.set({ status: indexed ? 'Exported to your library ✓' : `Exported as ${name} ✓` });
         } catch (err) {
           store.set({ status: 'Export failed: ' + String(err) });
         }
+      } else if (MAKERLAB) {
+        /* Embedded, but the host is not answering.
+
+           This used to fall through to the plain browser download below, and that was wrong in
+           two ways at once, both invisible. The download itself never happens: MakerWorld's
+           iframe is sandboxed with `allowDownloads: false` (makerlab/config.json, bundled
+           verbatim into the submission by pack.mjs), so the hidden `<a download>` click is
+           dropped with no error. And the licence nudge that followed is the KIT's modal, which
+           guards on `isDesktop()` and never on MAKERLAB — so it rendered inside the embed
+           advertising `BRAND.pricing.subscription`, a monthly membership at a different price,
+           through a `target="_blank"` link `allowPopups: false` kills. A $99 lifetime listing
+           was pitching a subscription to a user whose export had silently vanished.
+
+           So: no download, no nudge, and say what is actually true. `initMakerlab` has no
+           reconnect, so once the handshake has failed this is the state for the rest of the
+           session — the message has to send the user somewhere, and a reload is the only thing
+           that re-runs it. */
+        store.set({
+          status: 'Not connected to MakerLab, so the file cannot be sent. Reload the page and try again.',
+        });
       } else {
         // Standalone / public path: direct browser download + license reminder.
-        downloadThreeMF(latestParts, 'clicker.3mf');
+        // The cover goes in the file, so a folder of orders shows what each one is instead of
+        // forty identical 3MF icons.
+        downloadThreeMF(latestParts, `${designFileBase()}.3mf`, await coverImages());
         // First download of the session → big license modal; later ones → quiet corner toast.
         // The counter is in-memory, so a page refresh re-shows the big modal on the next download.
         downloadCount += 1;
@@ -699,7 +876,7 @@ export function mount(container: HTMLElement, host?: DesktopHost): () => void {
         // will not index it as a model — the status says what actually happened.
         try {
           const { path, indexed } = await host.exportToLibrary({
-            name: 'clicker-render.png',
+            name: `${designFileBase()}-render.png`,
             bytes: new Uint8Array(await blob.arrayBuffer()),
           });
           store.set({ status: indexed ? 'Render added to your library ✓' : `Render saved to ${path} ✓` });
@@ -708,7 +885,7 @@ export function mount(container: HTMLElement, host?: DesktopHost): () => void {
         }
         return;
       }
-      downloadBlob(blob, 'clicker-render.png');
+      downloadBlob(blob, `${designFileBase()}-render.png`);
     },
     onAiPrompt: async () => {
       try {
@@ -1676,7 +1853,35 @@ export function mount(container: HTMLElement, host?: DesktopHost): () => void {
     // see `define: __SHAPE_EDITOR__` in vite.config.ts. Nothing calls this there either
     // (the picker omits its button), so this guard is the second lock, not the only one.
     if (!__SHAPE_EDITOR__) return;
-    const { openShapeEditor } = await import('./ui/shapeEditor');
+    /* The editor is part of what the Lifetime Commercial Licence buys, so in the MakerWorld
+       build it is gated at the gesture that opens it — the same single entitlement the Seller
+       tools panel uses, so nobody who has paid meets a second wall.
+
+       Through `gateShape()` rather than a bare `ensureAccess`, because the gate is only half of
+       what a paid gesture owes the user. This called `ensureAccess` directly until 2026-09-05,
+       which meant clicking "Draw your own shape…" opened the host's PAYMENT WINDOW with no
+       marker on the button and nothing said beforehand about a charge — the only paid gesture in
+       the app that ambushed you. `gateShape` announces first, once per session, then gates.
+
+       `MAKERLAB &&` is load-bearing: in `dev` and `internal` builds `virtual:makerlab` is the
+       stub, where every gate answers false, and without this the editor would be unreachable in
+       exactly the two builds it is used for QA in. */
+    if (MAKERLAB && !(await (proPanel?.gateShape() ?? ensureAccess(SELLER_PACK)))) return;
+    /* The editor is the app's ONE lazily loaded chunk, so it is the one thing that can fail to
+       arrive after the page has loaded: a tab left open across a deploy asks for a chunk file
+       whose hash no longer exists on the server. The picker had already closed and this call
+       is fired with `void`, so the rejection went nowhere and the button simply did nothing.
+       Ian, 2026-09-07, after two rebuilds under his open preview tab: "I just pressed draw your
+       own shape and it just silently fails". Say so, and say what fixes it. */
+    let editor: typeof import('./ui/shapeEditor');
+    try {
+      editor = await import('./ui/shapeEditor');
+    } catch (err) {
+      console.error('[shape editor] failed to load', err);
+      toast('Could not load the shape editor. Reload the page and try again.');
+      return;
+    }
+    const { openShapeEditor } = editor;
     const s = store.get();
     const current = ringsForState(s);
     // The base's longest side, in the millimetres the editor measures everything against. The
@@ -2114,7 +2319,11 @@ export function mount(container: HTMLElement, host?: DesktopHost): () => void {
            SHAPE quietly does not", which the load path below already calls the worst kind of
            load bug. It follows `currentSvgText`'s precedent instead: the payload IS the file.
            A few hundred numbers, next to a base64 image. */
-        drawnShapeRings: ringsForState(s) && !s.packShapeToken ? ringsForState(s) : null,
+        // Never in the MakerWorld build: this is the shape editor's paid output, and a project
+        // file is a document that leaves the app. See the note in `applyProject`.
+        drawnShapeRings: MAKERLAB
+          ? null
+          : (ringsForState(s) && !s.packShapeToken ? ringsForState(s) : null),
         tolerance: s.tolerance,
         stemFitPct: s.stemFitPct,
         socketFitPct: s.socketFitPct,
@@ -2131,6 +2340,7 @@ export function mount(container: HTMLElement, host?: DesktopHost): () => void {
         currentSvgName,
         currentIconText,
         currentIconName,
+        currentImageName,
         colorMode: s.colorMode,
         limitedColors: s.limitedColors,
         bodyColorRgb: s.bodyColorRgb,
@@ -2300,6 +2510,7 @@ export function mount(container: HTMLElement, host?: DesktopHost): () => void {
       currentSvgName = set.currentSvgName ?? '';
       currentIconText = set.currentIconText ?? '';
       currentIconName = set.currentIconName ?? '';
+      currentImageName = set.currentImageName ?? '';
 
       if (currentSvgText && currentSvgName) {
         ui.addUploadedSvg(currentSvgText, currentSvgName);
@@ -2401,7 +2612,26 @@ export function mount(container: HTMLElement, host?: DesktopHost): () => void {
          Checked BEFORE the token branch and mutually exclusive with it by construction — a
          drawn shape never has a token, which is the same fact that tells `buildParamsFor`
          which of the two ring sets to use. */
-      const savedRings = (proj.settings as { drawnShapeRings?: Ring[] })?.drawnShapeRings;
+      /* Paid geometry does not travel in project files. In the MakerWorld build the drawn shape
+         is the SHAPE EDITOR's output, which is half of what the licence sells, and this restore
+         path had no gate on it at all: `applyProject` validates the rings with
+         `Array.isArray(r) && r.length >= 3` and nothing else, then feeds them straight to
+         `buildParamsFor` and out through an export that is deliberately never gated.
+
+         The Save/Load buttons are removed in this build, but `#projFile` and its change listener
+         stay live in the DOM, so this was a DOM-reachable route into paid geometry — and the
+         file does not even need to come from a real editor session, since hand-authored JSON
+         passes that validation. Which is exactly the boundary this app's own security model
+         draws: "anyone can rewrite a button from a console, and doing so gets them a refused
+         build." `markRings` honours it by living in a closure nothing outside panel.ts can
+         reach; this did not.
+
+         So the rings are ignored here and never written in the first place (see buildProject).
+         The design falls back to its preset, the same way the pack-token branch does when a
+         shape cannot be resolved. */
+      const savedRings = MAKERLAB
+        ? undefined
+        : (proj.settings as { drawnShapeRings?: Ring[] })?.drawnShapeRings;
       if (Array.isArray(savedRings) && savedRings.length) {
         const clean = savedRings.filter((r) => Array.isArray(r) && r.length >= 3);
         if (clean.length) loadedDrawnId = rememberDrawing(clean);
@@ -2460,6 +2690,7 @@ export function mount(container: HTMLElement, host?: DesktopHost): () => void {
     if (proHost) {
       proPanel = mountProFeatures({
         host: proHost,
+        ctaHost: container.querySelector<HTMLElement>('#licenceCtaMount') ?? undefined,
         getState: () => {
           const st = store.get();
           return {
@@ -2485,19 +2716,6 @@ export function mount(container: HTMLElement, host?: DesktopHost): () => void {
       cleanups.push(store.subscribe(() => proPanel?.refresh()));
     }
   }
-
-  // ------------------------------------------------------- MakerLab handshake
-  // MakerWorld build only: connect to the host when embedded (no-op otherwise). Runs alongside
-  // boot(); the export buttons check mlReady() at click time, so ordering doesn't matter.
-  if (MAKERLAB) {
-    initMakerlab({
-      onDisconnect: () => store.set({ status: 'Disconnected from the MakerLab host.' }),
-    }).then((ctx) => {
-      if (!ctx) return;
-      console.log('[MakerLab] connected, capabilities:', (ctx as Record<string, unknown>).capabilities);
-    });
-  }
-
 
   return () => {
     // Dialogs and the UI's own modals live on <body>, outside the container the host

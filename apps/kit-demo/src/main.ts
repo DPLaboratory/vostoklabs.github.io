@@ -10,6 +10,9 @@ import {
   topbarLinks,
   showWhatsNew,
   changelogButton,
+  nudgePad,
+  panelCredit,
+  paletteRow,
   supportLinks,
   exportPanel,
   sidebarFooter,
@@ -97,10 +100,45 @@ app.append(
 );
 
 /* ---------- Chrome ---------- */
+/* The topbar and the support row are full-width components: in a real app they span the
+   window, and squeezed into this page's 1fr demo column they wrap onto two lines and read as
+   cramped — which is a fault of the gallery, not of the component. `kit-entry--full` stacks
+   the description above the demo so these two get the whole content width. */
+const fullWidth = (e: HTMLElement) => { e.classList.add('kit-entry--full'); return e; };
+
 app.append(
   group('Chrome'),
-  entry('topbarLinks()', 'Topbar', 'The standard generator header: GitHub and commercial license on the left, donate actions on the right.', topbarLinks()),
-  entry('supportLinks()', 'Support links', 'Ko-fi, MakerWorld, and GitHub as one styled row. Placeholder URLs are hidden automatically.', supportLinks()),
+  fullWidth(entry('topbarLinks()', 'Topbar', 'The standard generator header: GitHub and commercial license on the left, donate actions on the right.', topbarLinks())),
+  fullWidth(entry('supportLinks()', 'Support links', 'Ko-fi, MakerWorld, and GitHub as one styled row. Placeholder URLs are hidden automatically.', supportLinks())),
+  entry(
+    'panelCredit()',
+    'Panel credit',
+    'The strip pinned at the foot of a settings panel: who made this, and what changed. It is ' +
+      'the byline moved out of the way of the first control, and the Updates button lives here ' +
+      'rather than competing with Export for the sticky footer. Pin it OUTSIDE .vl-panel__scroll ' +
+      'or it scrolls away with the controls.',
+    el('div', { className: 'kit-sidebar-frame' }, [
+      panelCredit({
+        title: 'Keycap Legend Generator',
+        updates: {
+          title: 'Keycap updates',
+          entries: [
+            {
+              date: '2026-09-05',
+              changes: [
+                { kind: 'added', text: 'A colour picker beside every palette row' },
+                { kind: 'fixed', text: 'The legend buttons no longer lag behind the click' },
+              ],
+            },
+            {
+              date: '2026-08-12',
+              changes: [{ kind: 'added', text: 'Choc v1 profile, in 1u, 1.5u and 2u' }],
+            },
+          ],
+        },
+      }),
+    ]),
+  ),
 );
 
 /* ---------- Foundations ---------- */
@@ -305,6 +343,31 @@ app.append(
     'Directional pad',
     'Nudge a placed element with the arrows, rotate from the top corners, reset from the dashed center. The readout updates live.',
     padReadout.root,
+  ),
+  entry(
+    'nudgePad()',
+    'Nudge pad',
+    'The same pad at settings-column size, with the two numbers it drives beside it — one ' +
+      'control, not two that happen to sit together. Chevrons rather than arrows, because these ' +
+      'are repeated small adjustments; the centre puts it back to zero. Press and hold to ' +
+      'repeat. An app that clamps against its own limits passes onNudge and stays the writer.',
+    nudgePad({
+      step: 0.5,
+      x: { label: 'X', max: 12 },
+      y: { label: 'Y', max: 12 },
+      onChange: (x, y) => toast(`Nudge: ${x} / ${y} mm`),
+    }),
+  ),
+  entry(
+    'paletteRow()',
+    'Palette row',
+    'One colour, one line: a name and the chip holding it, which opens the shared picker. The ' +
+      'compact counterpart to filamentRow()\u2019s shelf — a sidebar has room for one 30px line ' +
+      'per colour, not for fourteen swatches and a wrapped custom chip.',
+    el('div', { className: 'kit-sidebar-frame' }, [
+      paletteRow({ label: 'Keycap', value: '#161616', onChange: (h) => toast(`Keycap: ${h}`) }),
+      paletteRow({ label: 'Legend', value: '#f7f7f5', onChange: (h) => toast(`Legend: ${h}`) }),
+    ]),
   ),
 );
 

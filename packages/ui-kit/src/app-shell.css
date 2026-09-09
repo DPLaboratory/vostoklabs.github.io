@@ -140,11 +140,14 @@
    inherited the tighter values and read visibly cramped next to the real ones, so
    the default is the shipped rhythm and the overrides are now redundant. */
 .vl-app .vl-section {
-  padding: 22px 0;
+  padding: 16px 0;
   display: flex;
   flex-direction: column;
   gap: 14px;
 }
+/* A plain section already pads itself; its body's bottom padding is for the collapsible
+   kind, whose <details> has none. Stacked, the two made a 60 px gap before the next heading. */
+.vl-app .vl-section:not(details) > .vl-section__body { padding-bottom: 0; }
 .vl-app .vl-section:first-of-type { padding-top: 2px; }
 .vl-app .vl-section > .vl-label { margin: 0 0 2px; }
 /* Hidden controls must not leave a phantom gap. */

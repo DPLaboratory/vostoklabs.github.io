@@ -2,6 +2,8 @@ import { BRAND } from '@vostok/brand';
 import { el } from '../dom';
 import { ICONS, svgEl } from '../icons';
 import { themeToggleButton } from './theme';
+import { button } from './button';
+import { openChangelog, type ChangelogOptions } from './changelog';
 import { isDesktop } from '../host-env';
 
 /* Shared chrome for every Vostok generator so they all look the same: a header
@@ -100,6 +102,85 @@ export function qualityCallout(opts: QualityCalloutOptions): HTMLElement | null 
     root.append(dismiss);
   }
   return root;
+}
+
+export interface PanelCreditOptions {
+  /**
+   * The generator's name, in small type, above the byline.
+   *
+   * Optional, but pass it: the two-line block is the shape this strip is meant to be, and it
+   * is what leaves the right half of the row empty for the Updates button to sit in. Omit it
+   * only where the name would be a third repetition on one screen.
+   */
+  title?: string;
+  /** Where "Made by Vostok Labs" points. Defaults to the MakerWorld profile. */
+  madeByUrl?: string;
+  /**
+   * Put the update timeline in the strip. Its button is the compact one — an icon and a
+   * word — because this line is a signature, not a call to action.
+   */
+  updates?: ChangelogOptions;
+}
+
+/**
+ * The pinned credit strip at the foot of a settings panel: who made this, and what changed.
+ *
+ * It began as a MakerWorld review note — the Vostok Labs intro was the most prominent thing
+ * in the embed on first load, and the host would rather off-platform promotion did not sit in
+ * that spot — so the keycap generator moved its header into a compact line pinned to the
+ * bottom-left. It turned out to be the better shape everywhere: the byline stops competing
+ * with the first control, and the bottom of the panel is where a signature belongs.
+ *
+ * Updates rides here for the same reason. It is the answer to "has my bug been fixed", which
+ * is a question people ask rather than one to interrupt them with, and a full-width button in
+ * the settings column made it look like a step in the workflow. Next to the byline it reads
+ * as what it is: the version of the thing you are using.
+ *
+ * Pin it OUTSIDE the panel's scrolling area (`.vl-panel__scroll`), or it scrolls away with
+ * the controls and the strip is pointless.
+ */
+export function panelCredit(opts: PanelCreditOptions): HTMLElement {
+  /* Inside a desktop host the byline is a way OUT of the product, and the user already bought
+     this from Vostok Labs — the same call `generatorHeader` makes about its own credit, made
+     here too so a generator cannot grow a second outbound link by moving its byline. */
+  const byline: (HTMLElement | Node)[] = [document.createTextNode('Made by ')];
+  if (isDesktop()) {
+    byline.push(parseSvg(VOSTOK_MARK), document.createTextNode(BRAND.name));
+  } else {
+    const link = el('a', {
+      className: 'vl-credit-link',
+      attrs: {
+        href: opts.madeByUrl ?? BRAND.urls.makerworld,
+        target: '_blank',
+        rel: 'noopener noreferrer',
+      },
+    });
+    link.append(parseSvg(VOSTOK_MARK), document.createTextNode(BRAND.name));
+    byline.push(link);
+  }
+
+  const text = el('div', { className: 'vl-panel-credit__text' }, [
+    ...(opts.title ? [el('span', { className: 'vl-panel-credit__title', text: opts.title })] : []),
+    el('p', { className: 'vl-app-credit' }, byline),
+  ]);
+
+  const children: HTMLElement[] = [text];
+  if (opts.updates) {
+    const updates = opts.updates;
+    children.push(button({
+      label: 'Updates',
+      // Secondary, not ghost. Ghost is borderless and reads as a caption sitting next to a
+      // byline that is also muted text — reported, twice, as "that is not a button". Secondary
+      // is the hairline-bordered rung, which is unmistakably one without out-shouting Export.
+      emphasis: 'secondary',
+      icon: ICONS.history,
+      className: 'vl-panel-credit__updates',
+      title: 'What has changed in this generator',
+      onClick: () => openChangelog(updates),
+    }));
+  }
+
+  return el('div', { className: 'vl-panel-credit' }, children);
 }
 
 function actionBtn(label: string, icon: string | null, onClick: () => void, title?: string): HTMLButtonElement {

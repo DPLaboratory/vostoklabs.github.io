@@ -14,7 +14,7 @@
 import { DOMParser, XMLSerializer } from '@xmldom/xmldom';
 globalThis.DOMParser = DOMParser;
 globalThis.XMLSerializer = XMLSerializer;
-const { describeSvg, applySvgChoices, parseSvg } = await import('../src/logo.js');
+const { describeSvg, applySvgChoices, parseSvg, flattenSvgStyles } = await import('../src/logo.js');
 
 let failures = 0;
 const check = (name, ok, detail) => {
@@ -108,9 +108,29 @@ const rewritten = applySvgChoices(sdCard, { 0: 'off', 1: 'outline' });
 check('an off part stays in the file, hidden, so indices do not shift',
   describeSvg(rewritten).parts.length === 2 && /visibility="hidden"/.test(rewritten),
   `${describeSvg(rewritten).parts.length} parts after rewrite`);
-check('the rewritten file is stamped, and an inline style carries the choice past any class',
-  /data-vl-chosen="1"/.test(rewritten) && /style="[^"]*stroke:#000/.test(rewritten),
+check('the rewritten file is stamped, and the choice is written as attributes with no inline style left',
+  /data-vl-chosen="1"/.test(rewritten) && /stroke="#000"/.test(rewritten) && !/style=/.test(rewritten),
   rewritten.slice(0, 120).replace(/\n/g, ' '));
+
+// The cascade SVGLoader would resolve through the CSSOM — which the MakerLab host's style-src
+// blocks — is resolved into attributes first, so a class-styled outline drawing reads as an
+// outline everywhere, and the block and the style attribute are gone from what comes out.
+const classOutline = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <style>.a{fill:none;stroke:#000;stroke-width:3} .b { fill : #fff }</style>
+  <g class="a"><circle cx="50" cy="50" r="30"/></g>
+  <rect class="b" style="stroke:#000" x="10" y="10" width="20" height="20"/>
+</svg>`;
+const flat = flattenSvgStyles(classOutline);
+check('a class rule on a group, and a style attribute, become presentation attributes',
+  /<g[^>]*fill="none"[^>]*stroke="#000"[^>]*stroke-width="3"/.test(flat) && /<rect[^>]*fill="#fff"[^>]*stroke="#000"/.test(flat),
+  flat.replace(/\s+/g, ' ').slice(0, 220));
+check('and the style block and the style attribute are gone',
+  !/<style/.test(flat) && !/style=/.test(flat), flat.replace(/\s+/g, ' ').slice(0, 120));
+check('so the class-styled outline is described as an outline, 3 wide',
+  describeSvg(classOutline).parts.some((p) => p.kind === 'stroke' && p.strokeWidth === 3),
+  describeSvg(classOutline).parts.map((p) => `${p.kind}/${p.strokeWidth ?? '-'}/${p.why ?? '-'}`).join(' '));
+check('a file with no styles to resolve comes back byte-for-byte',
+  flattenSvgStyles(strokeOnly) === strokeOnly, 'untouched');
 
 
 // --- the artboard rect, under a transform -----------------------------------------------

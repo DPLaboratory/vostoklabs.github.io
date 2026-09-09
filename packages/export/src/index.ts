@@ -44,6 +44,19 @@ export interface ExportMeta {
   application?: string;
   /** Build id; pass `import.meta.env.VITE_BUILD_ID`. */
   buildId?: string;
+  /**
+   * A PNG of the model, for the file's thumbnail.
+   *
+   * Written as `Metadata/plate_1.png` and pointed at by three relationships: the OPC
+   * thumbnail rel that the 3MF spec and Windows' own shell read, plus Bambu's two cover
+   * rels, which are what Bambu Studio and Orca actually read. Aiming the OPC rel at a
+   * `thumbnail.png` of our own and assuming Bambu would find `plate_1.png` by convention
+   * was the earlier shape, and it showed no cover in either slicer.
+   * Get it from `viewer.renderToPng()`.
+   */
+  cover?: Uint8Array;
+  /** The same picture, small, for a slicer's list rows. Falls back to `cover`. */
+  coverSmall?: Uint8Array;
   /** Process-preset keys this model needs slicing a particular way, written into
    *  the project settings and declared as edits against the system preset.
    *
@@ -477,6 +490,7 @@ export function buildThreeMF(parts: ExportPart[], meta: ExportMeta): Uint8Array 
     `<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>` +
     `<Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/>` +
     `<Default Extension="config" ContentType="text/xml"/>` +
+    (meta.cover ? `<Default Extension="png" ContentType="image/png"/>` : '') +
     `<Override PartName="/Metadata/project_settings.config" ContentType="application/json"/>` +
     `</Types>`;
 
@@ -485,6 +499,14 @@ export function buildThreeMF(parts: ExportPart[], meta: ExportMeta): Uint8Array 
     `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">` +
     `<Relationship Target="/3D/3dmodel.model" Id="rel0"` +
     ` Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/>` +
+    (meta.cover
+      ? `<Relationship Target="/Metadata/plate_1.png" Id="rel-thumb"` +
+        ` Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/thumbnail"/>` +
+        `<Relationship Target="/Metadata/plate_1.png" Id="rel-cover-mid"` +
+        ` Type="${BBL_NS}/cover-thumbnail-middle"/>` +
+        `<Relationship Target="/Metadata/plate_1_small.png" Id="rel-cover-small"` +
+        ` Type="${BBL_NS}/cover-thumbnail-small"/>`
+      : '') +
     `</Relationships>`;
 
   return zipSync(
@@ -497,6 +519,12 @@ export function buildThreeMF(parts: ExportPart[], meta: ExportMeta): Uint8Array 
       // survive the trip into Bambu Studio / Orca even from a one-filament setup.
       'Metadata/project_settings.config': strToU8(projectSettings(palette, meta.process)),
       [PROVENANCE_FILE]: strToU8(mark.text),
+      ...(meta.cover
+        ? {
+            'Metadata/plate_1.png': meta.cover,
+            'Metadata/plate_1_small.png': meta.coverSmall ?? meta.cover,
+          }
+        : {}),
     },
     { level: 6 },
   );

@@ -85,7 +85,8 @@ edit('src/main.ts', (s) =>
     .replace("}, 'tag.3mf');", `}, '${id}.3mf');`)
     .replace("downloadJSON('tag-project.json'", `downloadJSON('${id}-project.json'`)
     .replace("title: 'Generator Template help'", `title: '${title} help'`)
-    .replace("title: 'My Generator',", `title: '${title}',`)
+    // Both of them: the header and the credit strip pinned at the panel's foot carry the name.
+    .replaceAll("title: 'My Generator',", `title: '${title}',`)
     .replace(
       "description: 'One line on what it makes and who it is for.',",
       `description: ${JSON.stringify(description)},`,

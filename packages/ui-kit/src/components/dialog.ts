@@ -1,8 +1,18 @@
 import { el } from '../dom';
+import { button, type ButtonEmphasis } from './button';
 
 export interface DialogAction {
   label: string;
   primary?: boolean;
+  /**
+   * Explicit rung on the button ladder, when `primary` is not enough of a distinction.
+   *
+   * `primary` stays the default vocabulary because almost every dialog wants exactly the two
+   * it describes. The one that does not is a dialog that asks for money: its buy button has to
+   * outrank a primary, and `emphasis: 'cta'` is how it says so without an app reaching in with
+   * a class. Wins over `primary` when both are set.
+   */
+  emphasis?: ButtonEmphasis;
   /** Called on click; the dialog closes afterwards unless the handler returns false. */
   onClick?: (dialog: DialogHandle) => boolean | void;
 }
@@ -107,15 +117,19 @@ export function dialog(opts: DialogOptions): DialogHandle {
   if (opts.actions?.length) {
     const row = el('div', { className: 'vl-dialog__actions' });
     for (const action of opts.actions) {
+      // `button()`, not a hand-written `<button class="vl-btn">`. The kit asks every app to
+      // stop rebuilding this element and remember the ladder — and then rebuilt it here, in the
+      // component every generator's confirm, import and licence window goes through. Same
+      // element, same classes, so nothing moves: `plain` IS `vl-btn` and `primary` IS
+      // `vl-btn vl-btn--primary`. What changes is that a future emphasis, focus or busy state
+      // added to the ladder now reaches dialog actions too, instead of passing them by.
       row.append(
-        el('button', {
-          className: `vl-btn${action.primary ? ' vl-btn--primary' : ''}`,
-          text: action.label,
-          on: {
-            click: () => {
-              if (action.onClick?.(handle) === false) return;
-              handle.close();
-            },
+        button({
+          label: action.label,
+          emphasis: action.emphasis ?? (action.primary ? 'primary' : 'plain'),
+          onClick: () => {
+            if (action.onClick?.(handle) === false) return;
+            handle.close();
           },
         }),
       );

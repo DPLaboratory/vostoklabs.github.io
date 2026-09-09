@@ -45,7 +45,15 @@ export interface ViewerOptions {
 export interface Viewer {
   /** Rebuild the meshes. The camera is kept unless `refit` is asked for, or the
    *  model changed size enough that it would leave the frame. */
-  setParts(parts: ViewerPart[], refit?: boolean): void;
+  /**
+   * Replace the model. `refit` re-frames the camera; otherwise the view is left alone.
+   *
+   * `anchor` is a model point to hold at the origin instead of centring the bounding box.
+   * Centring is right for a single object; for an assembly whose extent changes as parts
+   * come and go, it moves the part the user is looking at on every rebuild. A generator
+   * that knows which part is the stable one passes its centre here.
+   */
+  setParts(parts: ViewerPart[], refit?: boolean, anchor?: [number, number, number]): void;
   /** Frame the model from a named angle. */
   setView(preset: ViewPreset): void;
   /** Recolour one part in place, without rebuilding its geometry. */
@@ -57,6 +65,18 @@ export interface Viewer {
   /** Screen point -> model coordinates (mm, relative to the model's centre), or
    *  null if the ray misses. */
   pickPoint(clientX: number, clientY: number): [number, number, number] | null;
+  /** Which part is under the pointer, or null. For a drag that starts on a specific part. */
+  pickPart(clientX: number, clientY: number): number | null;
+  /** Where the pointer's ray meets an axis-aligned plane (`axis` = `value`), in model
+   *  coordinates — what a drag reads once the pointer has left the part it picked up. */
+  pickOnPlane(clientX: number, clientY: number, value: number, axis?: 'z' | 'y'): [number, number, number] | null;
+  /** Slide one part without rebuilding it — how a drag stays smooth. Cleared by `setParts`. */
+  setPartOffset(index: number, offset: [number, number, number]): void;
+  /** Place one part: a translation and a rotation about the Y axis, in model coordinates —
+   *  how an animation moves a part without touching its geometry. Cleared by `setParts`. */
+  setPartPose(index: number, position: [number, number, number], rotationY: number): void;
+  /** Show or hide the build plate. */
+  setPlateVisible(on: boolean): void;
   /** Hand the viewer a hierarchy it did not build — a fold rig, a linkage, anything
    *  whose parts are parented to each other rather than sitting flat on the root.
    *
@@ -190,6 +210,11 @@ export function createViewer(container: HTMLElement, opts: ViewerOptions = {}): 
   // would yank the camera back to default on every tick.
   let framedRadius = 0;
   let lastSize = new THREE.Vector3(40, 40, 10);
+  /** Where the model's centre ended up in world space after `setParts` positioned it. The
+   *  presets aim here. With no anchor it is (0, 0, height/2) — the model sits on the plate —
+   *  but an anchored assembly can hang below the origin, and aiming at height/2 then framed
+   *  empty air above it. */
+  let lastCentre = new THREE.Vector3(0, 0, 5);
 
   function aspect() {
     const h = container.clientHeight;
@@ -269,7 +294,7 @@ export function createViewer(container: HTMLElement, opts: ViewerOptions = {}): 
     }
   }
 
-  function setParts(parts: ViewerPart[], refit = false) {
+  function setParts(parts: ViewerPart[], refit = false, anchor?: [number, number, number]) {
     clearParts();
 
     for (let i = 0; i < parts.length; i++) {
@@ -314,8 +339,10 @@ export function createViewer(container: HTMLElement, opts: ViewerOptions = {}): 
     root.updateMatrixWorld(true);
     const box = new THREE.Box3().setFromObject(root);
     const centre = box.getCenter(new THREE.Vector3());
-    root.position.set(-centre.x, -centre.y, -box.min.z);
+    if (anchor) root.position.set(-anchor[0], -anchor[1], -anchor[2]);
+    else root.position.set(-centre.x, -centre.y, -box.min.z);
     lastSize = box.getSize(new THREE.Vector3());
+    lastCentre = centre.clone().add(root.position);
 
     const radius = Math.max(lastSize.x, lastSize.y, lastSize.z);
     if (refit || framedRadius === 0) {
@@ -340,7 +367,12 @@ export function createViewer(container: HTMLElement, opts: ViewerOptions = {}): 
     if (radius > framedRadius) {
       const offset = camera.position.clone().sub(controls.target);
       const needed = radius * FRAME_MUL + FRAME_PAD;
-      if (offset.length() < needed) {
+      // Only a camera that is still roughly at the framing distance follows the frame out.
+      // A user who has zoomed in on a detail has said where they want to look: a rebuild
+      // that grows the model leaves them there, however much longer the chain gets — the
+      // camera leaping out to frame a chain they were not looking at was the jump.
+      const wasFramed = framedRadius === 0 || offset.length() >= (framedRadius * FRAME_MUL + FRAME_PAD) * 0.85;
+      if (wasFramed && offset.length() < needed) {
         camera.position.copy(controls.target).add(offset.setLength(needed));
         controls.update();
       }
@@ -352,20 +384,20 @@ export function createViewer(container: HTMLElement, opts: ViewerOptions = {}): 
   function setView(preset: ViewPreset) {
     const radius = Math.max(lastSize.x, lastSize.y, lastSize.z);
     const dist = radius * FRAME_MUL + FRAME_PAD;
-    const midZ = lastSize.z / 2;
+    const c = lastCentre;
     // Face-on views keep a few degrees of tilt: dead-on would put the view axis
     // parallel to camera.up (Z) and leave the roll undefined.
     const tilt = dist * 0.08;
     switch (preset) {
-      case 'front': camera.position.set(0, -dist, midZ + tilt); break;
-      case 'back': camera.position.set(0, dist, midZ + tilt); break;
-      case 'left': camera.position.set(-dist, 0, midZ + tilt); break;
-      case 'right': camera.position.set(dist, 0, midZ + tilt); break;
-      case 'top': camera.position.set(0, -tilt, dist + midZ); break;
-      case 'bottom': camera.position.set(0, tilt, -dist + midZ); break;
-      default: camera.position.set(dist, -dist, dist * 0.75);
+      case 'front': camera.position.set(c.x, c.y - dist, c.z + tilt); break;
+      case 'back': camera.position.set(c.x, c.y + dist, c.z + tilt); break;
+      case 'left': camera.position.set(c.x - dist, c.y, c.z + tilt); break;
+      case 'right': camera.position.set(c.x + dist, c.y, c.z + tilt); break;
+      case 'top': camera.position.set(c.x, c.y - tilt, c.z + dist); break;
+      case 'bottom': camera.position.set(c.x, c.y + tilt, c.z - dist); break;
+      default: camera.position.set(c.x + dist, c.y - dist, c.z + dist * 0.75 - lastSize.z / 2);
     }
-    controls.target.set(0, 0, midZ);
+    controls.target.copy(c);
     controls.update();
     framedRadius = radius;
   }
@@ -407,6 +439,19 @@ export function createViewer(container: HTMLElement, opts: ViewerOptions = {}): 
     const hit = castAt(clientX, clientY);
     const idx = hit ? (hit.object.userData as { partIndex?: number }).partIndex : undefined;
     return typeof idx === 'number' ? idx : null;
+  }
+
+  const dragPlane = new THREE.Plane();
+  const dragHit = new THREE.Vector3();
+  function pickOnPlane(clientX: number, clientY: number, value: number, axis: 'z' | 'y' = 'z'): [number, number, number] | null {
+    const rect = renderer.domElement.getBoundingClientRect();
+    pointer.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+    pointer.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+    raycaster.setFromCamera(pointer, camera);
+    if (axis === 'z') dragPlane.set(new THREE.Vector3(0, 0, 1), -(value + root.position.z));
+    else dragPlane.set(new THREE.Vector3(0, 1, 0), -(value + root.position.y));
+    if (!raycaster.ray.intersectPlane(dragPlane, dragHit)) return null;
+    return [dragHit.x - root.position.x, dragHit.y - root.position.y, dragHit.z - root.position.z];
   }
 
   function pickPoint(clientX: number, clientY: number): [number, number, number] | null {
@@ -489,7 +534,8 @@ export function createViewer(container: HTMLElement, opts: ViewerOptions = {}): 
     // the centre, and precision falls off as the square of distance — so sizing the
     // gap on the centre leaves the far half of the sheet still fighting the plate,
     // which is exactly how it looks: clean near the camera, hatched further away.
-    const reach = Math.max(framedRadius, buildPlate.radius());
+    // A hidden plate has no reach: framing against it left a hanging model tiny in the view.
+    const reach = Math.max(framedRadius, buildPlate.object.visible ? buildPlate.radius() : 0);
     const wantFloor = -floorGapFor(camera.position.distanceTo(controls.target) + reach);
     if (Math.abs(wantFloor - floorZ) > 1e-3) {
       floorZ = wantFloor;
@@ -563,6 +609,21 @@ export function createViewer(container: HTMLElement, opts: ViewerOptions = {}): 
       applyHighlight();
     },
     pickPoint,
+    pickPart: pickIndexAt,
+    pickOnPlane,
+    setPartOffset(index, offset) {
+      const m = partMeshes[index];
+      if (m) m.position.set(offset[0], offset[1], offset[2]);
+    },
+    setPlateVisible(on) {
+      buildPlate.object.visible = on;
+    },
+    setPartPose(index, position, rotationY) {
+      const m = partMeshes[index];
+      if (!m) return;
+      m.position.set(position[0], position[1], position[2]);
+      m.rotation.set(0, rotationY, 0);
+    },
     setFoldRig,
     settleFoldRig,
     setPlate: (choice) => buildPlate.setChoice(choice),

@@ -1,57 +1,52 @@
 /*
   What has changed in this generator, in the user's language.
 
-  Rendered by the Updates button at the foot of the left column — see `changelogButton` in the
-  kit, which groups these by kind and sorts by date, so an entry can be appended anywhere in
-  this array without inverting the timeline.
+  Rendered by the Updates button in the credit strip at the foot of the left column — see
+  `panelCredit` / `changelogButton` in the kit, which group these by kind and sort by date, so
+  an entry can be appended anywhere in this array without inverting the timeline.
 
-  This replaced a "What's new" modal that opened itself on load and said "since you were last
-  here" to people who had never been here. Same three rules the clicker and foldbox files keep:
-
-    · A few words per bullet. This is scanned, not read: someone opens it to find out whether
-      the thing they reported is fixed, and a paragraph makes them hunt.
-
-    · Say what changed for the person holding the print, not what changed in the source.
-      "themeColorHex replaces the hardcoded clear colour" is a commit message. "The preview
-      background matches the panels again" is an update note.
-
-    · Only what SHIPPED. This is the answer to "has my bug been fixed", and an entry for work
-      that has not reached the deployed app turns that answer into a lie.
+  THE HOUSE STYLE LIVES IN THE KIT: packages/ui-kit/src/components/changelog.ts, in the comment
+  above `ChangelogEntry`. Read it before adding a line. In short: one short sentence per bullet,
+  ending in a full stop, about the print rather than the source, and only what has shipped.
 
   @type {import('@vostok/ui-kit').ChangelogEntry[]}
 */
 export const CHANGELOG = [
   {
-    date: '2026-09-04',
+    date: '2026-09-05',
     changes: [
-      { kind: 'added', text: 'This updates panel, in place of the popup that opened itself every visit' },
-      { kind: 'added', text: 'Drag an SVG straight onto the SVG panel. The panel said you could before, and nothing happened' },
-      { kind: 'added', text: 'A note about what the licence covers when you download, and the licence details are written into the file itself' },
-      { kind: 'added', text: 'Every export says so, with a message you cannot miss' },
-      { kind: 'added', text: 'Cancel a batch while it runs. The alphabet set and the keyboard set both had to be waited out or the tab closed' },
-      { kind: 'fixed', text: 'Icons in the gallery were white on white in light mode' },
-      { kind: 'fixed', text: 'An SVG the tracer cannot read now says so instead of doing nothing' },
-      { kind: 'fixed', text: 'A background rectangle is recognised in more files, so it stops being carved as a slab over your icon' },
-      { kind: 'fixed', text: 'The preview background matches the panels around it again' },
-      { kind: 'fixed', text: 'On a phone the panels scroll instead of squeezing into a strip' },
-      { kind: 'fixed', text: 'On a small laptop the legend buttons stay on one row' },
-      { kind: 'fixed', text: 'The icon gallery can be reached with the keyboard' },
-      { kind: 'changed', text: 'Changing profile or size says so when it resets the legend size' },
+      { kind: 'added', text: 'This updates panel.' },
+      { kind: 'added', text: 'Any colour you like, not just the shelf.' },
+      { kind: 'added', text: 'Drag an SVG straight onto the panel.' },
+      { kind: 'added', text: 'Cancel a batch while it runs.' },
+      { kind: 'added', text: 'A licence note when you download.' },
+      { kind: 'added', text: 'Licence details written into the file.' },
+      { kind: 'changed', text: 'Colours are one line each.' },
+      { kind: 'changed', text: 'Every export confirms itself.' },
+      { kind: 'changed', text: 'Profile and size say what they reset.' },
+      { kind: 'fixed', text: 'Gallery icons were invisible in light mode.' },
+      { kind: 'fixed', text: 'The legend type buttons keep up with the click.' },
+      { kind: 'fixed', text: 'An SVG the tracer cannot read says so.' },
+      { kind: 'fixed', text: 'Background rectangles found in more files.' },
+      { kind: 'fixed', text: 'The preview background matches the panels.' },
+      { kind: 'fixed', text: 'Panels scroll on a phone.' },
+      { kind: 'fixed', text: 'Legend buttons stay on one row.' },
+      { kind: 'fixed', text: 'The icon gallery takes the keyboard.' },
     ],
   },
   {
     date: '2026-08-12',
     changes: [
-      { kind: 'added', text: 'Choc v1 profile: low-profile caps for Kailh Choc v1 switches, in 1u, 1.5u and 2u. Print them on their side, as modelled, with supports for the stems' },
-      { kind: 'added', text: 'Thocky profile, alongside Standard and Low' },
-      { kind: 'added', text: 'Stem fit: loosen or tighten how the stem grips the switch. Nudge it up if the cap is too tight, down if it is loose' },
-      { kind: 'added', text: 'Pick the build plate you print on, under the preview' },
+      { kind: 'added', text: 'Choc v1 profile. Print them on their side.' },
+      { kind: 'added', text: 'Thocky profile.' },
+      { kind: 'added', text: 'Stem fit, for a cap that is too tight or too loose.' },
+      { kind: 'added', text: 'Pick the build plate you print on.' },
     ],
   },
   {
     date: '2026-08-06',
     changes: [
-      { kind: 'fixed', text: 'Exported 3MFs open in Bambu Studio with the cap and the legend already on separate filaments' },
+      { kind: 'fixed', text: 'Two-colour 3MFs open right in Bambu Studio.' },
     ],
   },
 ];

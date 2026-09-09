@@ -3,9 +3,9 @@ import type { ChangelogEntry } from '@vostok/ui-kit';
 /*
   What has changed in this generator, in the user's language.
 
-  Rendered by the Updates button at the bottom of the settings column. See `changelogButton`
-  in the kit, which groups these by kind and sorts by date, so an entry can be appended
-  anywhere in this array without inverting the timeline.
+  Rendered by the Updates button in the credit strip pinned at the foot of the settings
+  column. See `panelCredit` in the kit, which groups these by kind and sorts by date, so an
+  entry can be appended anywhere in this array without inverting the timeline.
 
   This replaced a modal that opened itself on load and said "since your last visit" to people
   who had never visited. Four rules, all of which this file exists to keep:
