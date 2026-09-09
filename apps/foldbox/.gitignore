@@ -1,0 +1,13 @@
+# Offline single-file builds, and any check copy of one.
+#
+# `build:offline` is `--mode full` on purpose: the offline foldbox carries the cut half
+# (machine table, kerf compensation, the DXF writer). That is fine as a deliverable and wrong
+# in this repo, which is public AND is the live site.
+#
+# A 940 KB `_offline-check.html` sat in `public/` from 75a2066 until 2026-09-09. `public/` is
+# copied verbatim into `dist/`, so every deploy published the unlaunched cut half at
+# /foldbox/_offline-check.html, a plain 200. Nothing in the print-only bundle leaked; the
+# whole app was simply sitting next to it as a static file.
+_offline-check.html
+*.offline.html
+dist-offline/
