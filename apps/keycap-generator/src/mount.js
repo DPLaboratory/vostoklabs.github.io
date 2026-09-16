@@ -23,7 +23,7 @@ import {
   topbarLinks, generatorHeader, qualityCallout, sidebarFooter, dialog, isDesktop, closeAllDialogs,
   promptDialog, hostAssetUrl, rememberFile, bindExternalLinks, chooseFile,
   button, dropZone, toast, themeColorHex, openLicenseModal, licenseReminderToast,
-  nudgePad, busyChip, panelCredit, paletteRow,
+  nudgePad, busyChip, panelCredit, paletteRow, segmentedControl,
 } from '@vostok/ui-kit';
 import { mountPlatePicker, loadPlateChoice, getPlate } from '@vostok/plates';
 import { createBuildPlate } from '@vostok/plates/three';
@@ -34,8 +34,12 @@ import { parseSvg, logoFootprint } from './logo.js';
 import { openSvgPreview } from './svgPreview.js';
 import { FONT_OPTIONS, importFontFile, parseLetter, loadBundledFonts } from './letter.js';
 import { buildBodies } from './geometry.js';
-import { initManifold, geomToManifold, manifoldToGeom, creaseNormals } from './manifold.js';
-import { scaleStemComponentsXY, printMatrix } from './meshUtils.js';
+import { initManifold, geomToManifold, manifoldToGeom, creaseNormals, getManifoldApi } from './manifold.js';
+import { printMatrix } from './meshUtils.js';
+import { applyStemClearance } from './stemClearance.js';
+import {
+  FIT_TEST_STEP_MM, FIT_TEST_STEP_OPTIONS, FIT_TEST_FONT_ID, computeFitTestLadder, buildFitTestRow,
+} from './fitTest.js';
 import { buildThreeMF } from './export3mf.js';
 import { buildObjMtl, objToArrayBuffer } from './exportObj.js';
 import { LUCIDE_ICONS, buildSvg, svgDataUrl } from './lucideIcons.js';
@@ -54,7 +58,7 @@ import {
 // the bundler drop the whole feature — tabs, layouts and set builder — from the public build.
 // Through the same kind of virtual seam as the SDK above, because src/pro/ is gitignored: the
 // public build resolves this to a no-op stub and never needs those files to exist.
-import { mountProFeatures } from 'virtual:pro-pack';
+import { mountProFeatures, PRO_CHANGELOG } from 'virtual:pro-pack';
 import './style.css';
 import { ICONS } from '@vostok/ui-kit';
 import { CHANGELOG } from './changelog';
@@ -329,9 +333,13 @@ export function mount(container, host) {
       stemGeometry = null;
     } else {
       const tol = stemTolValue;
-      stemGeometry = Math.abs(tol) > 1e-4
-        ? scaleStemComponentsXY(baseStemGeometry, tol)
-        : baseStemGeometry;
+      if (Math.abs(tol) > 1e-4) {
+        const result = applyStemClearance(getManifoldApi(), baseStemGeometry, tol);
+        if (!result.watertight) console.warn('Stem clearance was not watertight at tol', tol, '— keeping the previous stem.');
+        stemGeometry = result.watertight ? result.geometry : (stemGeometry ?? baseStemGeometry);
+      } else {
+        stemGeometry = baseStemGeometry;
+      }
     }
     if (prev && prev !== baseStemGeometry && prev !== stemGeometry) prev.dispose();
     stemMesh.geometry?.dispose();
@@ -448,7 +456,7 @@ export function mount(container, host) {
     get meta() { return meta; },
     get lastBodies() { return lastBodies; },
     get shellGeometry() { return shellGeometry; },
-    get stemGeometry() { return stemGeometry; },
+    get stemGeometry() { flushStemApply(); return stemGeometry; },
   };
 
   // paired range + number input -> single value with onChange
@@ -523,9 +531,257 @@ export function mount(container, host) {
     stemTolValue = Math.round(Math.min(STEM_TOL_MAX, Math.max(STEM_TOL_MIN, v)) * 100) / 100;
     renderStemTol();
   }
-  $('stemTolMinus').addEventListener('click', () => { setStemTol(stemTolValue - STEM_TOL_STEP); applyStemTolerance(); });
-  $('stemTolPlus').addEventListener('click', () => { setStemTol(stemTolValue + STEM_TOL_STEP); applyStemTolerance(); });
+  // Applying the stepper's value runs real CSG once the tolerance is non-zero
+  // (applyStemClearance), which measures 170-280ms on a Choc cap's two stub stems — running
+  // that synchronously per click would stack up behind a rapid burst of presses. Coalescing
+  // onto the next animation frame means a burst applies once, at whatever value the user has
+  // landed on by the time that frame runs — MX's 5-50ms case just applies a frame later, which
+  // is imperceptible.
+  let stemApplyRaf = null;
+  /** Apply a pending stepper value right now. Called by everything that reads the stem for an
+   *  export: requestAnimationFrame stops in a background tab, so a frame that has not run yet
+   *  must never be the reason an exported stem is at the wrong tolerance. */
+  function flushStemApply() {
+    if (stemApplyRaf == null) return;
+    cancelAnimationFrame(stemApplyRaf);
+    stemApplyRaf = null;
+    applyStemTolerance();
+    if (fitTestActive) renderFitTest();
+  }
+  function scheduleStemApply() {
+    if (stemApplyRaf != null) return; // a frame is already pending; it reads stemTolValue fresh
+    stemApplyRaf = requestAnimationFrame(() => {
+      stemApplyRaf = null;
+      applyStemTolerance();
+      if (fitTestActive) renderFitTest();
+    });
+  }
+  cleanups.push(() => { if (stemApplyRaf != null) cancelAnimationFrame(stemApplyRaf); });
+  $('stemTolMinus').addEventListener('click', () => {
+    setStemTol(stemTolValue - STEM_TOL_STEP); scheduleStemApply();
+  });
+  $('stemTolPlus').addEventListener('click', () => {
+    setStemTol(stemTolValue + STEM_TOL_STEP); scheduleStemApply();
+  });
   renderStemTol();
+
+  // ---------------------------------------------------------------- fit test (free)
+  //
+  // A free alternate view of the single cap: instead of the real keycap, the preview shows a
+  // row of small test pieces — the stem standing up out of a flat tab, its own tolerance value
+  // debossed beside it — at a fixed ladder from -0.40 to +0.40. Print the
+  // row, press each stem onto a real switch, and dial the stepper to the one that fits. Every
+  // number on a printed piece is a value the stepper itself could show, so there is never a
+  // gap between what got printed and what the app can dial in afterwards.
+  //
+  // A same-stage alternate state, like Double legends, not a stage takeover like Full set: it
+  // never calls setStageOwner or setSingleOnlyVisible, only hides the real cap's own meshes and
+  // shows its own pooled ones in their place.
+  const FIT_TEST_EXPORT_LABEL = MAKERLAB ? 'Export fit test 3MF' : 'Download fit test 3MF';
+  // What the footer restores to on exit — the same value `shell.defaultExportLabel` (below)
+  // computes for every OTHER mode handing the button back, kept as its own constant here since
+  // that one lives inside the Pro panel's own options object.
+  const FIT_TEST_IDLE_EXPORT_LABEL = MAKERLAB ? 'Export 3MF' : 'Download 3MF';
+  let fitTestActive = false;
+  let fitTestPieces = null;       // the last built row's pieces, kept for export
+  let fitTestSavedCamera = null;  // camera position/target from just before entering
+
+  /** Pooled meshes for the fit-test row, sharing capMat so a colour change follows for free —
+   *  exactly like the real stem already does. Sized to whatever the current row needs: one
+   *  mesh per watertight piece, two for the rare piece whose union came back in two bodies. */
+  const fitTestMeshes = [];
+  function ensureFitTestMeshes(n) {
+    while (fitTestMeshes.length < n) {
+      const mesh = new THREE.Mesh(undefined, capMat);
+      group.add(mesh); // NOT printGroup — the fit test ignores per-profile print rotation
+      fitTestMeshes.push(mesh);
+    }
+    while (fitTestMeshes.length > n) {
+      const mesh = fitTestMeshes.pop();
+      mesh.geometry?.dispose();
+      group.remove(mesh);
+    }
+  }
+
+  /** The step between fit-test rungs, chosen with the Step control below while Fit test is open.
+   *  Kept for the session, so leaving and re-entering Fit test does not reset it. */
+  let fitTestStep = FIT_TEST_STEP_MM;
+
+  /** Five rungs `fitTestStep` apart, centred on the Stem fit stepper: at 0 with the default step
+   *  that is -0.20 to +0.20, and after a first print a finer step tunes around the value that fit. */
+  function fitTestLadder() {
+    return computeFitTestLadder(stemTolValue, fitTestStep, STEM_TOL_MIN, STEM_TOL_MAX);
+  }
+
+  const fitStepControl = segmentedControl({
+    label: 'Fit test step',
+    options: FIT_TEST_STEP_OPTIONS.map((s) => ({ value: s.toFixed(2), label: `${s.toFixed(2)} mm` })),
+    value: FIT_TEST_STEP_MM.toFixed(2),
+    onChange: (v) => { fitTestStep = Number(v); renderFitTest(); },
+  });
+  fitStepControl.hidden = true; // setFitTestLock shows it while Fit test is open
+  $('fitTestStepMount').replaceWith(fitStepControl);
+
+  /** {positions, indices} (fitTest.js's plain output) -> a real THREE.BufferGeometry.
+   *
+   *  Copies `positions` rather than wrapping it: a `BufferAttribute` keeps whatever array it's
+   *  given, and the export path calls `.translate()` on its own copy to bake in the row offset
+   *  — sharing the array with the preview mesh's geometry would let that mutate the preview's
+   *  vertices too, out from under a mesh whose position is ALSO offset, doubling it up. */
+  function plainToFitTestGeometry(plain) {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(plain.positions.slice(), 3));
+    g.setIndex(new THREE.BufferAttribute(plain.indices, 1));
+    g.computeVertexNormals();
+    return g;
+  }
+
+  /** (Re)build the row for the current ladder and cap, and reframe the camera on it. Cheap
+   *  enough (a handful of small booleans) to run with no busy chip, same as applyStemTolerance. */
+  function renderFitTest() {
+    if (!fitTestActive || !baseStemGeometry || !meta) return;
+    let pieces;
+    try {
+      pieces = buildFitTestRow(
+        {
+          api: getManifoldApi(),
+          baseStemGeometry,
+          meta,
+          letterContour: (text) => parseLetter(text, FIT_TEST_FONT_ID, 6),
+        },
+        fitTestLadder(),
+      );
+    } catch (e) {
+      console.error(e);
+      setStatus('Could not build the fit test for this cap.', 'err');
+      return;
+    }
+    fitTestPieces = pieces;
+
+    ensureFitTestMeshes(pieces.reduce((n, p) => n + (p.watertight ? 1 : 2), 0));
+    let mi = 0;
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity, minZ = Infinity, maxZ = -Infinity;
+    for (const p of pieces) {
+      minX = Math.min(minX, p.pieceBBox.min[0] + p.offsetX);
+      maxX = Math.max(maxX, p.pieceBBox.max[0] + p.offsetX);
+      minY = Math.min(minY, p.pieceBBox.min[1]);
+      maxY = Math.max(maxY, p.pieceBBox.max[1]);
+      minZ = Math.min(minZ, p.pieceBBox.min[2]);
+      maxZ = Math.max(maxZ, p.pieceBBox.max[2]);
+      const place = (plain) => {
+        const mesh = fitTestMeshes[mi++];
+        mesh.geometry?.dispose();
+        mesh.geometry = creaseNormals(plainToFitTestGeometry(plain));
+        mesh.position.set(p.offsetX, 0, 0);
+        mesh.visible = true;
+      };
+      if (p.watertight) place(p.geometry);
+      else { place(p.tabGeometry); place(p.stemGeometry); }
+    }
+
+    const n = pieces.length;
+    const values = pieces.map((p) => p.label).join(', ');
+    setStatus(
+      `Fit test ready · ${n} piece${n === 1 ? '' : 's'} (${values}) · press each stem onto a `
+      + 'switch, then set Stem fit tolerance to the one that fits.',
+    );
+
+    const dist = framedDistance(Math.hypot(maxX - minX, maxY - minY, maxZ - minZ) / 2);
+    const target = new THREE.Vector3(0, (maxZ - minZ) / 2, 0);
+    controls.target.copy(target);
+    camera.position.copy(target).add(new THREE.Vector3(0.5, 0.45, 0.75).multiplyScalar(dist));
+  }
+
+  /** proPanel.paint() relabels the footer on every Pro mode/tab change and does not know Fit
+   *  test exists — called after anything that can trigger a paint while Fit test is open. */
+  function syncFitTestExportLabel() {
+    if (fitTestActive && exportBtn) exportBtn.textContent = FIT_TEST_EXPORT_LABEL;
+  }
+
+  /**
+   * Fit test shows stems, not a keycap, so nothing that shapes the keycap may reach the screen
+   * while it is open. Ian, after picking an icon in Fit test put a legend floating over a test
+   * piece: "this and similar issues should not be possible".
+   *
+   * So the guarantee is structural rather than a list of mesh flags to remember:
+   *  - the whole `printGroup` (cap, legend, stem, every extra legend) is hidden, so whatever a
+   *    rebuild sets on a single mesh's `.visible`, none of it can draw;
+   *  - `canRegen()` declines while this is open, so no rebuild runs in the first place;
+   *  - the controls that only shape a keycap (the legend picker, placement, the cap toggles,
+   *    the blank export) are `inert` and dimmed, so they cannot be used and say so.
+   * Profile and size stay live (they change the stem under test), and so do the stem stepper,
+   * the colours and Print settings, which all apply to the test pieces too.
+   */
+  function setFitTestLock(on) {
+    const placement = $('stemTolVal')?.closest('.section');
+    const locked = [
+      container.querySelector('.legend-section'),
+      ...(placement ? [...placement.children].filter((node) => !node.classList.contains('fit-block')) : []),
+      $('exportBlank'),
+    ];
+    for (const node of locked) {
+      if (!node) continue;
+      node.inert = on;
+      node.classList.toggle('kc-fit-locked', on);
+    }
+    const note = $('fitTestNote');
+    if (note) note.hidden = !on;
+    fitStepControl.hidden = !on;
+  }
+
+  function enterFitTest() {
+    if (fitTestActive) return;
+    // A Pro mode owns the stage: hand it back to Single first, same as clicking its own tab —
+    // stem fit is a profile setting, not a per-mode one, so Fit test should work from wherever
+    // it's pressed rather than bouncing back with nothing shown. The one case it can't borrow
+    // the stage is a set actually generating, which has nowhere to report into if stopped.
+    if (singleCapSuspended && !proPanel?.goToSingle?.()) {
+      setStatus('The set is still generating. Let it finish or cancel it first.', 'warn');
+      fitTestControl.setValue('cap');
+      return;
+    }
+    // No stem to test — bounce the tab back rather than leave it looking selected with nothing
+    // to show.
+    if (!baseStemGeometry) { fitTestControl.setValue('cap'); return; }
+    fitTestActive = true;
+    printGroup.visible = false;
+    clearTimeout(regenTimer); // a queued rebuild would now decline anyway; do not leave it pending
+    setFitTestLock(true);
+    fitTestSavedCamera = { position: camera.position.clone(), target: controls.target.clone() };
+    if (exportBtn) exportBtn.textContent = FIT_TEST_EXPORT_LABEL;
+    renderFitTest();
+  }
+
+  function exitFitTest() {
+    if (!fitTestActive) return;
+    fitTestActive = false;
+    ensureFitTestMeshes(0);
+    fitTestPieces = null;
+    fitTestControl.setValue('cap'); // a no-op if this IS how we got here (the user clicked it)
+    setFitTestLock(false);
+    // The cap's own meshes kept whatever visibility their last rebuild gave them (single colour,
+    // shine-through, extra legends), so showing the group is enough; the rebuild below then
+    // applies anything that changed while the fit test was open.
+    printGroup.visible = true;
+    if (exportBtn) exportBtn.textContent = FIT_TEST_IDLE_EXPORT_LABEL;
+    if (fitTestSavedCamera) {
+      camera.position.copy(fitTestSavedCamera.position);
+      controls.target.copy(fitTestSavedCamera.target);
+      fitTestSavedCamera = null;
+    }
+    scheduleRegen();
+  }
+
+  const fitTestControl = segmentedControl({
+    options: [
+      { value: 'cap', label: 'Keycap' },
+      { value: 'fit', label: 'Fit test' },
+    ],
+    value: 'cap',
+    onChange: (v) => { if (v === 'fit') enterFitTest(); else exitFitTest(); },
+  });
+  $('fitTestMount').replaceWith(fitTestControl);
+
   // ---------------------------------------------------------------- nudge d-pad
   //
   // The pad does not replace the nudge values, it DRIVES them: it clamps against whatever range
@@ -596,6 +852,24 @@ export function mount(container, host) {
   const capColorRow = paletteFor('capColor', 'Keycap', 'capColorMount');
   const logoColorRow = paletteFor('logoColor', 'Legend', 'logoColorMount', 'logoColorLabel');
 
+  // ---------------------------------------------------------------- print settings
+  /* What the exported 3MF tells the slicer. One choice today: the wall generator. Arachne by
+     default, on MakerWorld's own advice (2026-09-14): variable-width walls keep a
+     legend's thin strokes from dropping out and make layer lines less visible. Ian asked for it
+     to be the user's call: "add a print setting section where user can set arachne wall for his
+     export". Read at export time by `printConfig()` and `projectProcess()` below. */
+  let wallGenerator = 'arachne';
+  const wallsRow = segmentedControl({
+    label: 'Walls',
+    options: [
+      { value: 'arachne', label: 'Arachne' },
+      { value: 'classic', label: 'Classic' },
+    ],
+    value: wallGenerator,
+    onChange: (v) => { wallGenerator = v; },
+  });
+  $('printSettingsMount').replaceWith(wallsRow);
+
   // ---------------------------------------------------------------- resets
   // Stock values for the per-section reset buttons. `size` is replaced at boot
   // once we know the sensible default for this cap's geometry.
@@ -641,6 +915,7 @@ export function mount(container, host) {
     C.offy.set(DEFAULTS.offy);
     setStemTol(DEFAULTS.stemTol);
     applyStemTolerance();
+    if (fitTestActive) renderFitTest();
     $('mirror').checked = DEFAULTS.mirror;
     $('through').checked = DEFAULTS.through;
     $('single').checked = DEFAULTS.single;
@@ -742,8 +1017,10 @@ export function mount(container, host) {
    * preview for the rest of the session.
    */
   function canRegen() {
-    // A Pro mode owns the stage — the cap this would rebuild is hidden behind its board.
-    return !singleCapSuspended && !!currentLegend && !!meta && !!shellGeometry;
+    // A Pro mode owns the stage — the cap this would rebuild is hidden behind its board. Fit
+    // test is the same case in the free app: the stage shows test pieces, and a rebuild is what
+    // used to put a legend back on screen over them. exitFitTest() rebuilds on the way out.
+    return !singleCapSuspended && !fitTestActive && !!currentLegend && !!meta && !!shellGeometry;
   }
 
   async function doRegen() {
@@ -964,7 +1241,9 @@ export function mount(container, host) {
     try {
       currentLegend = parseLetter($('letterText').value, $('fontSelect').value, letterMaxLen(currentUnit));
       updateSizeMax();
-      setStatus('Generating letter…');
+      // Fit test declines the rebuild (canRegen), so nothing would ever replace this line and it
+      // would sit over the fit-test status for good. The letter still applies on the way out.
+      if (!fitTestActive) setStatus('Generating letter…');
       scheduleRegen();
     } catch (e) {
       console.error(e);
@@ -1249,6 +1528,7 @@ export function mount(container, host) {
   // assignment stays identical. The stem rides on the legend filament in shine-through,
   // otherwise the keycap filament.
   function buildExportParts(bodies, capColor, logoColor, through) {
+    flushStemApply();
     // Filament slots, by colour. Slot 1 is the cap and slot 2 is the legend, unconditionally
     // and as they always have been — even when the two are set to the same hex, which is a
     // two-filament file someone may well have asked for on purpose.
@@ -1328,6 +1608,7 @@ export function mount(container, host) {
    */
   let exportsThisSession = 0;
   function nudgeLicense() {
+    if (proPanel?.hasLicence?.()) return; // owns the lifetime licence: nothing left to pitch
     exportsThisSession += 1;
     if (exportsThisSession === 1) openLicenseModal();
     else licenseReminderToast();
@@ -1352,6 +1633,18 @@ export function mount(container, host) {
      not survive that conversion. The description does: MakerWorld shows it on the model page. */
   const LICENSE_NOTE = `Free for personal use; selling prints requires a commercial license: ${BRAND.urls.mwCommercial}`;
 
+  /* The Print settings choice, in the two shapes the two export routes need.
+
+     `printConfig()` is written into the 3MF the MakerLab host builds from our OBJ (SDK
+     2026-09-03). Artifact level, so it also covers every plate of a multi-plate export without
+     a `plates` array.
+
+     `projectProcess()` is the same choice for a 3MF we build ourselves: an override over the
+     system process in project_settings.config. Classic is the system preset's own value, so it
+     is left out rather than written, or Studio would show an untouched process as modified. */
+  const printConfig = () => ({ wallGenerator });
+  const projectProcess = () => (wallGenerator === 'classic' ? {} : { wall_generator: wallGenerator });
+
   async function deliverModel(makeParts, baseName, downloadMsg, description) {
     if (MAKERLAB && mlReady() && mlCan('export')) {
       setStatus('Sending to MakerLab…');
@@ -1366,6 +1659,7 @@ export function mount(container, host) {
               mtl,
               coverImage: captureCover(),
               description: `${description} ${LICENSE_NOTE}`,
+              printConfig: printConfig(),
             },
           ],
         });
@@ -1384,7 +1678,7 @@ export function mount(container, host) {
       return;
     }
 
-    const blob = buildThreeMF(makeParts());
+    const blob = buildThreeMF(makeParts(), { process: projectProcess() });
 
     if (host) {
       // The whole reason the desktop bundle exists: the file does not land in Downloads for
@@ -1418,6 +1712,40 @@ export function mount(container, host) {
     nudgeLicense();
   }
 
+  /** The rendered fit-test row -> export parts. Each piece's row offset is baked into real
+   *  vertex positions, since an export part is a standalone geometry with no parent transform
+   *  (unlike the preview meshes, which carry the offset as `mesh.position`). */
+  function fitTestExportParts() {
+    const capColor = $('capColor').value;
+    const parts = [];
+    for (const p of fitTestPieces) {
+      const bake = (plain) => plainToFitTestGeometry(plain).translate(p.offsetX, 0, 0);
+      if (p.watertight) {
+        // A space, not a hyphen, before the label: the label carries its own sign, and
+        // `Test-${label}` named the negative rungs "Test--0.10" in the slicer's object list.
+        parts.push({ name: `Fit test ${p.label}`, color: capColor, extruder: 1, geom: bake(p.geometry) });
+      } else {
+        parts.push({ name: `Fit test tab ${p.label}`, color: capColor, extruder: 1, geom: bake(p.tabGeometry) });
+        parts.push({ name: `Fit test stem ${p.label}`, color: capColor, extruder: 1, geom: bake(p.stemGeometry) });
+      }
+    }
+    return parts;
+  }
+
+  /** Export whatever fit-test row is currently on screen, through the one export function
+   *  every other path in this app uses — provenance, the licence nudge, and the MakerLab vs
+   *  browser branching all come for free (invariant 8). */
+  async function exportFitTest() {
+    if (!fitTestPieces?.length) return;
+    const n = fitTestPieces.length;
+    await deliverModel(
+      fitTestExportParts,
+      `keycap-fit-test${profileSlug() ? '-' + profileSlug() : ''}`,
+      `Exported fit test 3MF ✓  ${n} piece${n === 1 ? '' : 's'} to test-fit, one filament.`,
+      `Keycap stem fit test (${n} piece${n === 1 ? '' : 's'}), made with the Keycap Legend Generator.`,
+    );
+  }
+
   /**
    * The one primary action, whatever the mode is pointed at.
    *
@@ -1429,6 +1757,10 @@ export function mount(container, host) {
    * `#export` button stays wired to the same function: other code still clicks it.
    */
   async function runPrimaryExport() {
+    // Checked BEFORE the Pro panel gets a say: Fit test is free, and unlike Full set it does
+    // not take the stage, so a paid mode active underneath it (Double legends) would otherwise
+    // get first refusal here even while Fit test is what is actually on screen.
+    if (fitTestActive) { await exportFitTest(); return; }
     // The footer's primary button is the same button in every mode. When a Pro mode owns the
     // stage it owns this too — the keyboard set generates a board, not the cap behind it — so
     // it gets first refusal before the single-cap path runs.
@@ -1457,6 +1789,7 @@ export function mount(container, host) {
   // Export the bare cap (uncarved shell + stem) in a single colour — no legend.
   // Works for any size; uses the loaded shell directly (already a clean indexed solid).
   $('exportBlank').addEventListener('click', async () => {
+    flushStemApply();
     if (!shellGeometry) return;
     const makeParts = () => {
       const capColor = $('capColor').value;
@@ -1539,7 +1872,7 @@ export function mount(container, host) {
           plates.push(objToArrayBuffer(obj));
           plateMtl = mtl;
         } else {
-          files[`keycap-${ch}.3mf`] = new Uint8Array(await buildThreeMF(parts).arrayBuffer());
+          files[`keycap-${ch}.3mf`] = new Uint8Array(await buildThreeMF(parts, { process: projectProcess() }).arrayBuffer());
         }
         bodies.keycapGeometry.dispose();
         bodies.logoGeometry?.dispose();
@@ -1567,6 +1900,7 @@ export function mount(container, host) {
               mtl: plateMtl,
               coverImage: captureCover(),
               description: `Full A–Z keycap alphabet set (26 print plates). ${LICENSE_NOTE}`,
+              printConfig: printConfig(),
             },
           ],
         });
@@ -1765,6 +2099,13 @@ export function mount(container, host) {
     $('exportBlank').disabled = false; // blank export needs only the shell, ready now
 
     $('meta').textContent = `Cap ${(meta.bbox.max[0] - meta.bbox.min[0]).toFixed(1)}×${(meta.bbox.max[1] - meta.bbox.min[1]).toFixed(1)}×${meta.topZ.toFixed(1)} mm · ${meta.triangles} tris · from ${meta.generatedFrom}`;
+
+    // A cap with no stem has nothing for Fit test to show.
+    fitTestControl?.setOptionVisible('fit', !!baseStemGeometry);
+    if (fitTestActive) {
+      if (!baseStemGeometry) exitFitTest();
+      else renderFitTest(); // profile/size switch while open: rebuild against the new stem
+    }
   }
 
   const profileSelect = $('profileSelect');
@@ -1836,6 +2177,9 @@ export function mount(container, host) {
   let singleCapSuspended = false;
   function setStageOwner(owner) {
     const pro = owner === 'pro';
+    // Full set taking the stage always force-exits Fit test cleanly first — a stage-owning
+    // mode's board is the only thing that gets to be on screen, and the fit-test row is not it.
+    if (pro && fitTestActive) exitFitTest();
     singleCapSuspended = pro;
     setPaused(pro);
     renderer.domElement.style.display = pro ? 'none' : '';
@@ -1932,6 +2276,7 @@ export function mount(container, host) {
     currentUnit = entry.unit || 1;
     updateAlphabetAvailability();
     proPanel?.refresh(); // not every profile ships the sizes a keyboard layout needs
+    syncFitTestExportLabel(); // refresh() can repaint the footer label; Fit test owns it for now
     switchKeycap(entry.file, `${profile.label} ${entry.label}`);
   });
 
@@ -2150,6 +2495,14 @@ export function mount(container, host) {
         // chip, which is what makes "let it finish or cancel it first" a true sentence.
         setBusy: (text, onCancel) => setBusyState(text ?? null, onCancel),
         captureCover,
+        // Invariant #3, on the one export path a file-level mark cannot reach: the host's
+        // OBJ->3MF conversion drops a comment, so the licence line has to ride in the
+        // export's description instead, and the nudge has to fire from there too. See
+        // setMode.js, where both are used exactly as the single-cap path uses them here.
+        nudgeLicense,
+        licenseNote: LICENSE_NOTE,
+        // The Print settings wall choice, so the Full set export honours it too.
+        printConfig,
       });
       cleanups.push(() => proPanel.destroy());
     }
@@ -2180,11 +2533,25 @@ export function mount(container, host) {
   // Updates rides here rather than as a full-width button among the controls — it is the
   // answer to "has my bug been fixed", a question people ask rather than one to interrupt
   // them with, and next to the byline it reads as the version of the thing you are using.
+  /** The Updates panel's entries: the free changelog, plus the paid features' own in the
+   *  MakerWorld build (src/pro/changelog.js), merged by date so one day reads as one section.
+   *  The public build's pro stub exports an empty list, so it shows only the free one. */
+  function updateEntries() {
+    if (!MAKERLAB || !PRO_CHANGELOG.length) return CHANGELOG;
+    const byDate = new Map(CHANGELOG.map((e) => [e.date, { ...e, changes: [...e.changes] }]));
+    for (const e of PRO_CHANGELOG) {
+      const into = byDate.get(e.date);
+      if (into) into.changes.push(...e.changes);
+      else byDate.set(e.date, { ...e, changes: [...e.changes] });
+    }
+    return [...byDate.values()];
+  }
+
   $('keycapCredit')?.append(panelCredit({
     // The name goes in both builds. Two lines is the shape of this strip — it is what fills
     // its left half and leaves the right half for the button.
     title: 'Keycap Legend Generator',
-    updates: { entries: CHANGELOG, title: 'Keycap updates' },
+    updates: { entries: updateEntries(), title: 'Keycap updates' },
   }));
 
   // ------------------------------------------------------- theme (viewport sync)
@@ -2217,6 +2584,7 @@ export function mount(container, host) {
       rot: parseFloat($('rot').value),
       offx: parseFloat($('offx').value),
       offy: parseFloat($('offy').value),
+      stemTol: stemTolValue,
       capColor: $('capColor').value,
       logoColor: $('logoColor').value,
       mirror: $('mirror').checked,
@@ -2225,6 +2593,7 @@ export function mount(container, host) {
       single: $('single').checked,
       profile: $('profileSelect').value,
       unit: $('unitSelect').value,
+      wallGenerator,
     };
     if (currentLegend) projectState.legend = currentLegend;
     // An edited keyboard set is hours of work; it belongs in the project file next to
@@ -2388,11 +2757,15 @@ export function mount(container, host) {
   /** Applies a parameter blob to the live UI. Shared by both load paths. */
   function applyLoadedState(loaded) {
     if (!loaded || typeof loaded !== 'object') throw new Error('Not a keycap project');
+    // Fit test is never part of a saved project — opening one always lands on the normal cap
+    // view, cleanly, rather than leaving a stale row from whatever was on screen before.
+    if (fitTestActive) exitFitTest();
     if (loaded.size != null) { $('size').value = loaded.size; $('sizeNum').value = loaded.size; }
     if (loaded.depth != null) { $('depth').value = loaded.depth; $('depthNum').value = loaded.depth; }
     if (loaded.rot != null) { $('rot').value = loaded.rot; $('rotNum').value = loaded.rot; }
     if (loaded.offx != null) { $('offx').value = loaded.offx; $('offxNum').value = loaded.offx; }
     if (loaded.offy != null) { $('offy').value = loaded.offy; $('offyNum').value = loaded.offy; }
+    if (loaded.stemTol != null) { setStemTol(loaded.stemTol); applyStemTolerance(); }
     // `.value = ` fires nothing, and the swatch rows follow the inputs by listening for
     // `input` — so a loaded project used to leave both palettes showing the old colour while
     // the preview showed the new one.
@@ -2404,6 +2777,10 @@ export function mount(container, host) {
     if (loaded.single != null) $('single').checked = loaded.single;
     if (loaded.profile) $('profileSelect').value = loaded.profile;
     if (loaded.unit) $('unitSelect').value = loaded.unit;
+    if (loaded.wallGenerator === 'arachne' || loaded.wallGenerator === 'classic') {
+      wallGenerator = loaded.wallGenerator;
+      wallsRow.setValue(loaded.wallGenerator);
+    }
     if (loaded.keyboardSet) keyboardSet = loaded.keyboardSet;
     if (loaded.dualLegend) dualLegend = loaded.dualLegend;
     // Trigger UI sync
@@ -2422,6 +2799,7 @@ export function mount(container, host) {
         // Entitlements came from the host, so losing it means we no longer know what is owned.
         // Repaint to the locked look rather than leave a stale unlocked one on screen.
         proPanel?.refresh();
+        syncFitTestExportLabel();
       },
     }).then((ctx) => {
       if (!ctx) return;
@@ -2433,6 +2811,7 @@ export function mount(container, host) {
       // repainted the moment it lands. It used to come right anyway, but only because loading
       // the profiles happened to finish later and dragged a refresh along with it.
       proPanel?.refresh();
+      syncFitTestExportLabel();
     });
   }
 
@@ -2484,6 +2863,7 @@ export function mount(container, host) {
       setKeycap(await loadKeycap(defaultFile));
       updateAlphabetAvailability();
       proPanel?.refresh(); // the profile is only known now
+      syncFitTestExportLabel();
 
       rebuildGallery();
       loadBundledSvgs();

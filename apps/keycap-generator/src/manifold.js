@@ -15,6 +15,14 @@ export async function initManifold() {
   return api;
 }
 
+// The initialized module itself, for a caller that builds geometry directly against
+// Manifold/CrossSection/Mesh rather than through this file's geomToManifold/manifoldToGeom pair
+// (fitTest.js, which takes it as a dependency so it never has to import this file — see its own
+// header comment for why). Null until initManifold() has resolved at least once.
+export function getManifoldApi() {
+  return api;
+}
+
 // three geometry -> Manifold solid (must be welded/watertight first).
 export function geomToManifold(geom) {
   const g = weldPositions(geom);

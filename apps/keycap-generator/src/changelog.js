@@ -13,6 +13,18 @@
 */
 export const CHANGELOG = [
   {
+    date: '2026-09-15',
+    changes: [
+      { kind: 'added', text: 'A stem fit test you can print.' },
+      { kind: 'added', text: 'Pick Arachne or Classic walls for the print.' },
+      { kind: 'changed', text: 'Exports use Arachne walls unless you pick Classic.' },
+      { kind: 'added', text: 'Choose the step between fit test pieces.' },
+      { kind: 'fixed', text: 'Projects remember the stem fit.' },
+      { kind: 'fixed', text: 'Stem fit really changes how tight the stem grips.' },
+      { kind: 'fixed', text: 'Stem fit on Choc goes the right way.' },
+    ],
+  },
+  {
     date: '2026-09-05',
     changes: [
       { kind: 'added', text: 'This updates panel.' },

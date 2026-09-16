@@ -11,6 +11,8 @@ function pretty(file) {
   return base.charAt(0).toUpperCase() + base.slice(1);
 }
 
+// bambulab.svg is deliberately NOT listed: Ian's call (2026-09-15) is that the Bambu Lab logo may
+// ship in the MakerWorld build, which is Bambu's own platform. Do not add it back.
 const TRADEMARKED_ICONS = new Set([
   'discord.svg', 'gmail.svg', 'google.svg', 'googlechrome.svg',
   'googledrive.svg', 'googlesheets.svg', 'instagram.svg',
@@ -103,8 +105,10 @@ function makerlabPlugin(enabled) {
         // called in the public build (the branch is fenced behind MAKERLAB) — this exists so
         // the module graph resolves.
         return 'export function mountProFeatures() {\n'
-          + '  return { refresh() {}, destroy() {}, async handleExport() { return false; } };\n'
-          + '}\n';
+          + '  return { refresh() {}, destroy() {}, goToSingle: () => true, async handleExport() { return false; } };\n'
+          + '}\n'
+          // No paid Updates entries in a build without the paid features.
+          + 'export const PRO_CHANGELOG = [];\n';
       }
       if (id === STUB_ID) {
         return [
@@ -119,6 +123,7 @@ function makerlabPlugin(enabled) {
           // fenced behind MAKERLAB), so these exist purely to keep the module shape identical
           // and are hard-locked. Nothing here can grant access.
           'export const PRO_PACK = "pro_pack";',
+          'export const SELLER_PACK = "seller_pack";',
           'export const isUnlocked = () => false;',
           'export const paymentInfo = () => null;',
           'export const isUserCancelled = () => false;',
@@ -155,6 +160,18 @@ export default defineConfig(({ mode }) => ({
   // serves this app at /<repo-name>/, not at the domain root).
   base: './',
   plugins: [iconsManifestPlugin(mode === 'makerworld'), makerlabPlugin(mode === 'makerworld')],
+  /*
+    Board-spanning artwork, shelved as of 2026-09-14. It does not do what Ian intended it to —
+    see setMode.js — so it is put to rest rather than shipped: the chip, the panel, the frame and
+    the marquee are all fenced behind this flag in setMode.js (`if (__KEYCAP_ARTWORK__)`), which
+    folds `false` here into `if (false)` and takes those branches out of the bundle with it. The
+    source files stay on disk untouched; nothing is deleted.
+
+    `false` in every mode for now — there is no "on" build to flip it in yet, unlike
+    `__SHAPE_EDITOR__` in clicker-generator or `__FOLDBOX_CUT__` in foldbox. Flipping this to
+    `true` brings the whole feature back.
+  */
+  define: { __KEYCAP_ARTWORK__: JSON.stringify(false) },
   server: { open: true },
   // manifold-3d ships its own WASM; let it load the asset directly instead of prebundling.
   optimizeDeps: { exclude: ['manifold-3d'] },

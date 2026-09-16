@@ -333,6 +333,13 @@
       }
       .fit-help { font-size: 12px; color: var(--muted); line-height: 1.45; margin: 9px 0 0; }
       .fit-help strong { color: var(--text); }
+      /* Placement only — .vl-tabs is the kit's own class from segmentedControl(). */
+      .fit-block > .vl-tabs { margin-top: 10px; }
+      /* The Fit test step control carries a caption, so the kit wraps it in .vl-control. */
+      .fit-block > .vl-control { margin-top: 10px; }
+      /* Controls that only shape a keycap, while Fit test shows stems. `inert` (mount.js,
+         setFitTestLock) is what stops them; this only says so. */
+      .kc-fit-locked { opacity: .4; transition: opacity var(--dur-hover) var(--ease-standard); }
 
       /* Section header with an inline reset control */
       .section-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }

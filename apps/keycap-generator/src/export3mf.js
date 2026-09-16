@@ -53,7 +53,9 @@ const rgbOf = (hex) => {
   return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
 };
 
-export function buildThreeMF(parts) {
+// `process`: slicer settings applied over the system process (the Print settings wall choice),
+// written into project_settings.config by `projectSettings` from @vostok/export.
+export function buildThreeMF(parts, { process } = {}) {
   const wrapperId = parts.length + 2; // parts use ids 2..N+1, wrapper is N+2
   // Invariant #2. This writer builds its own zip (it wraps the parts in a components object
   // the shared writer does not), and writing its own zip is how it came to write no mark at
@@ -147,7 +149,7 @@ export function buildThreeMF(parts) {
       '_rels/.rels': strToU8(rels),
       '3D/3dmodel.model': strToU8(model),
       'Metadata/model_settings.config': strToU8(modelSettings),
-      'Metadata/project_settings.config': strToU8(projectSettings(palette)),
+      'Metadata/project_settings.config': strToU8(projectSettings(palette, process)),
       [PROVENANCE_FILE]: strToU8(mark.text),
     },
     { level: 6 }

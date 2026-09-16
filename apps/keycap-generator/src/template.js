@@ -108,6 +108,13 @@ export const TEMPLATE = `
             <button id="stemTolPlus" class="tol-btn" type="button" aria-label="Looser stem">+</button>
           </div>
           <p class="fit-help">How tightly the stem grips the switch. Press <strong>+</strong> if the keycap is too hard to push on, <strong>−</strong> if it feels loose. 0 = as designed.</p>
+          <!-- Cap / Fit test switch, built in mount.js from the kit's segmentedControl(). Sits
+               right under the value it previews: pressing a real switch is the only way to
+               answer "what number do I type" for this control. -->
+          <div id="fitTestMount"></div>
+          <!-- The fit test's step (kit segmentedControl, mount.js), shown only while it is open. -->
+          <div id="fitTestStepMount"></div>
+          <p class="fit-help" id="fitTestNote" hidden>Fit test shows the stems only. Legend and placement settings wait until you switch back to Keycap.</p>
         </div>
         <div class="switch-row">
           <span class="switch-label">Mirror horizontally</span>
@@ -152,6 +159,14 @@ export const TEMPLATE = `
           <div id="logoColorMount"></div>
         </div>
         <div id="exportBlankMount"></div>
+      </div>
+
+      <!-- Print settings: what the exported 3MF tells the slicer. The control is the kit's
+           segmentedControl(), built in mount.js; this is only its slot. -->
+      <div class="section">
+        <div class="label">Print settings</div>
+        <div id="printSettingsMount"></div>
+        <p class="fit-help">Arachne gives smoother walls and keeps thin legend lines solid. Saved into the exported 3MF.</p>
       </div>
       </div><!-- .vl-panel__scroll -->
 
