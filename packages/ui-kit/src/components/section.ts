@@ -3,7 +3,12 @@
 import { el } from '../dom';
 
 export interface SectionOptions {
-  /** Heading. Numbered steps read best as `1 · Shape`, `2 · Colours`. */
+  /** Heading. Numbered steps read best as `1 · Shape`, `2 · Colours`.
+   *
+   *  Empty means no heading at all — not an empty one. A section header that only
+   *  restates the control under it ("Making it" over a Cut/Print switch) costs a
+   *  row plus a gap and tells nobody anything; an empty `<p class="vl-label">`
+   *  costs the same and looks like a bug. */
   title: string;
   /** Rows inside the section. */
   body: (Node | string)[];
@@ -11,10 +16,10 @@ export interface SectionOptions {
   open?: boolean;
 }
 
-/** A plain, always-open section: heading + rows. */
+/** A plain, always-open section: heading + rows. Pass `title: ''` for no heading. */
 export function section(opts: SectionOptions): HTMLElement {
   return el('div', { className: 'vl-section' }, [
-    el('p', { className: 'vl-label', text: opts.title }),
+    ...(opts.title ? [el('p', { className: 'vl-label', text: opts.title })] : []),
     el('div', { className: 'vl-section__body' }, opts.body),
   ]);
 }

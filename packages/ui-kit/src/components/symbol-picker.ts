@@ -7,11 +7,11 @@ import { drawer } from './drawer';
   A browser for a large set of single-glyph symbols.
 
   It takes its data rather than importing it, so the kit stays free of a font
-  dependency: `@vostok/fonts` owns the 1392-glyph Font Awesome registry, and this
+  dependency: `@vostok/fonts` owns the symbol registry and its font, and this
   owns what a person does with it. Any other glyph set with the same three fields
   works here unchanged.
 
-  The list is rendered in pages. A flat grid of 1392 buttons costs about a second of
+  The list is rendered in pages. A flat grid of ~1500 buttons costs about a second of
   layout on a phone and drops every one of them into the accessibility tree, which is
   a worse experience than the sixty hardcoded ones it replaces.
 */
@@ -60,7 +60,7 @@ export interface SymbolPickerOptions {
   /**
    * Which category to open on. Without it the picker opens on "All", and for a
    * large set sorted by id that means the first screen is whatever sorts first —
-   * which for Font Awesome is the digits. Open on the good stuff.
+   * which is always some alphabetical accident. Open on the good stuff.
    */
   defaultCategory?: string;
   /**

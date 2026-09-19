@@ -591,6 +591,273 @@ export function buildObj(parts: ExportPart[]): string {
   return lines.join('\n');
 }
 
+export interface ObjMtlOptions {
+  /** What the OBJ's `mtllib` line names. The MakerLab host takes the MTL as text beside the
+   *  OBJ, so this is a label, but a standalone .obj opened next to its .mtl needs it right. */
+  mtlFileName?: string;
+  /** The provenance mark, written as the OBJ's header comment (invariant #2). */
+  provenance?: ProvenanceMeta;
+}
+
+export interface ObjMtl {
+  obj: string;
+  mtl: string;
+  materialCount: number;
+}
+
+/** "r g b" as 0..1 floats, the only colour form MTL's `Kd` takes. */
+const kd = (rgb: RGB): string => rgb.map((v) => (Math.max(0, Math.min(255, v)) / 255).toFixed(4)).join(' ');
+
+/** OBJ object and material names are whitespace-delimited, so keep them token-safe. */
+const objSlug = (s: string): string => s.replace(/[^A-Za-z0-9_-]+/g, '_').replace(/^_+|_+$/g, '') || 'part';
+
+/**
+ * OBJ + MTL for the MakerLab host's OBJ -> 3MF route.
+ *
+ * The SDK accepts `stl | obj | zip` and nothing else; the documented way to hand a MakerLab
+ * user a 3MF is an OBJ plus an MTL of `Kd` colours, which the host assembles. MakerWorld's
+ * 2026-07-27 review made the clicker and the keycap generator drop a pre-built .3mf inside a
+ * zip for exactly this. The rules the SDK guide sets, and this follows:
+ *
+ *  - every colour region is its own `o` object with its own `usemtl`
+ *  - the MTL carries `Kd` only, no texture maps
+ *  - one material per distinct colour, first-seen order, so the part that comes first gets
+ *    filament 1 (keep it well under the 16-slot AMS ceiling)
+ *
+ * Millimetres in the parts' own coordinates. The host centres the plate on X/Y and does not
+ * remap axes, so Z is up exactly as `buildThreeMF` writes it.
+ *
+ * `ExportPart.extruder` has no OBJ spelling: the host numbers filaments by distinct `Kd`, so a
+ * forced slot only survives if its colour is also distinct.
+ *
+ * The clicker (`objExport.ts`) and the keycap generator (`exportObj.js`) each still carry their
+ * own copy of this writer, with app-specific plate layout baked in. This one is the shared
+ * version; moving them onto it is separate work.
+ *
+ * The header comment carries the provenance mark, but a comment is not metadata: the MakerLab
+ * host CONVERTS this OBJ, and nothing in the comment reaches the 3MF the user receives. What
+ * carries the licence on that path is the artifact's `description`, which the caller writes.
+ */
+export function buildObjMtl(parts: ExportPart[], opts: ObjMtlOptions = {}): ObjMtl {
+  const matByColor = new Map<string, string>();
+  const mtlBlocks: string[] = [];
+  const materialFor = (rgb: RGB): string => {
+    const key = rgb.join(',');
+    let name = matByColor.get(key);
+    if (name === undefined) {
+      name = `filament${matByColor.size + 1}`;
+      matByColor.set(key, name);
+      mtlBlocks.push(`newmtl ${name}\nKd ${kd(rgb)}`);
+    }
+    return name;
+  };
+
+  const lines: string[] = [
+    ...(opts.provenance ? provenanceComment(opts.provenance).split('\n') : []),
+    '# Units: millimetres. One `o` object per part, coloured through the MTL.',
+    `mtllib ${opts.mtlFileName ?? 'model.mtl'}`,
+  ];
+
+  // Face indices are 1-based and GLOBAL across the file, so every object's indices shift by
+  // the number of vertices already written.
+  let vOff = 0;
+  const used = new Set<string>();
+  for (const p of parts) {
+    const base = objSlug(p.group ? `${p.group}_${p.name}` : p.name);
+    let name = base;
+    for (let n = 2; used.has(name); n++) name = `${base}_${n}`;
+    used.add(name);
+
+    lines.push(`o ${name}`, `usemtl ${materialFor(p.color)}`);
+    for (let i = 0; i < p.positions.length; i += 3) {
+      lines.push(`v ${f(p.positions[i]!)} ${f(p.positions[i + 1]!)} ${f(p.positions[i + 2]!)}`);
+    }
+    for (let i = 0; i < p.indices.length; i += 3) {
+      lines.push(`f ${p.indices[i]! + 1 + vOff} ${p.indices[i + 1]! + 1 + vOff} ${p.indices[i + 2]! + 1 + vOff}`);
+    }
+    vOff += p.positions.length / 3;
+  }
+
+  return {
+    obj: lines.join('\n') + '\n',
+    mtl: mtlBlocks.join('\n\n') + '\n',
+    materialCount: matByColor.size,
+  };
+}
+
+/** UTF-8 bytes of a text file as an exact `ArrayBuffer` — the `buffer` shape the MakerLab
+ *  SDK's `export()` takes. Sliced, so no shared or oversized backing store goes with it. */
+export function textToArrayBuffer(text: string): ArrayBuffer {
+  return bytesToArrayBuffer(new TextEncoder().encode(text));
+}
+
+/** The exact bytes of a view as their own `ArrayBuffer`. `view.buffer` alone can be larger
+ *  than the view (fflate's output is), and a host that reads the whole buffer gets garbage. */
+export function bytesToArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+}
+
+/** A flat ring in millimetres, Y up, as manifold's `CrossSection.toPolygons()` returns it. */
+export type CutRing = [number, number][];
+
+/** One operation's worth of shapes in a cut file. */
+export interface CutLayer {
+  /** The group's id, e.g. 'CUT' or 'ENGRAVE'. */
+  name: string;
+  /** The operation colour. Laser software sorts a file into jobs by it: red cuts, black engraves. */
+  color: string;
+  /**
+   * 'line': every ring is its own hairline path, each hole before the ring around it. A cut or a score.
+   * 'fill': every island is one filled compound path, so the counter of an "o" stays a hole. An engrave.
+   */
+  mode: 'line' | 'fill';
+  /** One entry per island: its outer ring and its holes, in any order and either winding. */
+  shapes: CutRing[][];
+  /**
+   * Raster engraves on this layer: a dithered picture placed on the part. Same frame as the
+   * rings (millimetres, Y up), `x`/`y` the bottom-left corner. `href` is a data URL, so the
+   * file stays a single self-contained SVG; the pixels ride at whatever resolution the
+   * dither was made at, and `width`/`height` in mm are what the laser software sizes it to.
+   * Only meaningful on a 'fill' layer.
+   */
+  images?: CutImage[];
+}
+
+/** A picture engraved as pixels rather than paths. */
+export interface CutImage {
+  href: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/** Hairline: what Epilog and Trotec drivers read as "vector, not raster" (0.001 in). */
+const CUT_HAIRLINE_MM = 0.025;
+const CUT_MARGIN_MM = 2;
+
+/** Millimetres to 3 dp, which is finer than any laser positions to, and never "-0.000". */
+const mm = (v: number): string => (Math.abs(v) < 5e-4 ? 0 : v).toFixed(3);
+
+function ringArea(ring: CutRing): number {
+  let a = 0;
+  for (let i = 0; i < ring.length; i++) {
+    const [x0, y0] = ring[i]!;
+    const [x1, y1] = ring[(i + 1) % ring.length]!;
+    a += x0 * y1 - x1 * y0;
+  }
+  return Math.abs(a) / 2;
+}
+
+/**
+ * A laser or cutter SVG: one group per operation, one user unit per millimetre.
+ *
+ * The rules are the ones laser-slot and foldbox learned from real machines, written once here
+ * so the next cut file does not have to learn them again:
+ *
+ *  1. ONE CLOSED RING PER PATH on a line layer. A machine with no explicit pen lift only lifts
+ *     between objects, so a second subpath in one element becomes a travel line cut straight
+ *     across the part.
+ *  2. HOLES BEFORE THE RING AROUND THEM. Document order is cut order: cut the outline first and
+ *     the piece is loose on the bed before its hole is cut.
+ *  3. RINGS CLOSE WITH `Z`, never with a repeated point, which stops the head on one spot.
+ *  4. NO TRANSFORMS. The Y flip is baked into the numbers, because a `transform` is exactly what
+ *     importers drop, and width/height are mm with a viewBox in the same numbers, so no importer
+ *     has to guess a DPI.
+ *
+ * A fill layer is the one exception to rule 1: an engrave has to be one compound path per
+ * island, or the counter of every "o" gets engraved solid.
+ *
+ * The provenance mark rides in `<desc>`, which is never drawn, so never on the piece (invariant #2).
+ */
+export function buildCutSvg(layers: CutLayer[], meta: ProvenanceMeta): string {
+  // Rule 3, and nothing that cannot enclose an area.
+  const tidy = (ring: CutRing): CutRing => {
+    const a = ring[0];
+    const b = ring[ring.length - 1];
+    return ring.length > 1 && a && b && a[0] === b[0] && a[1] === b[1] ? ring.slice(0, -1) : ring;
+  };
+  const live = layers
+    .map((l) => ({
+      ...l,
+      shapes: l.shapes.map((s) => s.map(tidy).filter((r) => r.length >= 3)).filter((s) => s.length > 0),
+      images: (l.images ?? []).filter((i) => i.width > 0 && i.height > 0 && i.href),
+    }))
+    .filter((l) => l.shapes.length > 0 || l.images.length > 0);
+
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const l of live) {
+    for (const s of l.shapes) {
+      for (const r of s) {
+        for (const [x, y] of r) {
+          if (x < minX) minX = x;
+          if (x > maxX) maxX = x;
+          if (y < minY) minY = y;
+          if (y > maxY) maxY = y;
+        }
+      }
+    }
+    for (const i of l.images) {
+      if (i.x < minX) minX = i.x;
+      if (i.x + i.width > maxX) maxX = i.x + i.width;
+      if (i.y < minY) minY = i.y;
+      if (i.y + i.height > maxY) maxY = i.y + i.height;
+    }
+  }
+  if (!Number.isFinite(minX)) minX = minY = maxX = maxY = 0;
+  const W = maxX - minX + 2 * CUT_MARGIN_MM;
+  const H = maxY - minY + 2 * CUT_MARGIN_MM;
+
+  const point = ([x, y]: [number, number]) => `${mm(x - minX + CUT_MARGIN_MM)} ${mm(maxY - y + CUT_MARGIN_MM)}`;
+  const ringPath = (r: CutRing) => `M ${point(r[0]!)} ${r.slice(1).map((p) => `L ${point(p)}`).join(' ')} Z`;
+
+  const body: string[] = [];
+  for (const l of live) {
+    body.push(`  <g id="${esc(l.name)}">`);
+    // Pictures first, under any paths on the same layer. The Y flip puts the image's TOP edge
+    // at its y + height; `image-rendering: pixelated` keeps a 1-bit dither crisp in viewers
+    // rather than smeared into grey by bilinear scaling.
+    for (const i of l.images) {
+      body.push(
+        `    <image href="${i.href}" x="${mm(i.x - minX + CUT_MARGIN_MM)}" y="${mm(maxY - (i.y + i.height) + CUT_MARGIN_MM)}"` +
+          ` width="${mm(i.width)}" height="${mm(i.height)}" preserveAspectRatio="none" style="image-rendering:pixelated"/>`,
+      );
+    }
+    if (l.mode === 'fill') {
+      for (const s of l.shapes) {
+        body.push(`    <path d="${s.map(ringPath).join(' ')}" fill="${l.color}" fill-rule="evenodd"/>`);
+      }
+    } else {
+      // Smallest first, within an island and across islands (rule 2): a hole is smaller than
+      // the ring around it, and an island sitting in a hole is smaller than the island it is in.
+      const ordered = l.shapes
+        .map((s) => s.map((r) => ({ r, area: ringArea(r) })).sort((a, b) => a.area - b.area))
+        .sort((a, b) => a[a.length - 1]!.area - b[b.length - 1]!.area);
+      for (const s of ordered) {
+        for (const { r } of s) {
+          body.push(`    <path d="${ringPath(r)}" fill="none" stroke="${l.color}" stroke-width="${CUT_HAIRLINE_MM}"/>`);
+        }
+      }
+    }
+    body.push('  </g>');
+  }
+
+  // The size in words, so a user can check their software imported it at the right scale.
+  const size = `Artwork: ${(maxX - minX).toFixed(1)} x ${(maxY - minY).toFixed(1)} mm`;
+  return [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    `<svg xmlns="http://www.w3.org/2000/svg" version="1.1" width="${mm(W)}mm" height="${mm(H)}mm" viewBox="0 0 ${mm(W)} ${mm(H)}">`,
+    `  <title>${esc(meta.title)}</title>`,
+    `  <desc>${esc(`${provenance(meta).text}\n\n${size}`)}</desc>`,
+    ...body,
+    '</svg>',
+    '',
+  ].join('\n');
+}
+
 /** Save bytes or text to the user's downloads folder. */
 export function downloadFile(data: Uint8Array | string, fileName: string, mime: string): void {
   const blob = new Blob([data as unknown as BlobPart], { type: mime });

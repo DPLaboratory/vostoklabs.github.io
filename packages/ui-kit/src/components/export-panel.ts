@@ -61,6 +61,31 @@ export function exportPanel(opts: ExportPanelOptions): HTMLElement {
 }
 
 /**
+ * Replace the note under the export buttons.
+ *
+ * Here rather than in the app for the reason `setFieldOptions` is here: the note is the
+ * panel's own node, and an app that reaches in for `.vl-hint` itself is an app that has to
+ * re-derive the kit's class names — the class ladder problem one level down. Pass either the
+ * panel or the `sidebarFooter` that wraps it. An empty note removes the line.
+ */
+export function setExportNote(panel: HTMLElement, note: string): void {
+  const host = panel.classList.contains('vl-export')
+    ? panel
+    : panel.querySelector<HTMLElement>('.vl-export');
+  if (!host) return;
+  let p = host.querySelector<HTMLElement>(':scope > .vl-hint');
+  if (!note) {
+    p?.remove();
+    return;
+  }
+  if (!p) {
+    p = el('p', { className: 'vl-hint' });
+    host.append(p);
+  }
+  p.textContent = note;
+}
+
+/**
  * The verb on the button, decided by where the generator is running.
  *
  * "Download" is a browser word. Inside a desktop host the file is not downloaded — it is

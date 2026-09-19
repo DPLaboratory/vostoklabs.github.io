@@ -91,6 +91,27 @@ export const ICONS = {
   zoomIn: stroke('<circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/>', 18),
   zoomOut: stroke('<circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/><line x1="8" y1="11" x2="14" y2="11"/>', 18),
   maximize: stroke('<path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/>', 18),
+
+  /* The aspect lock that sits between a Width and a Height row — pressed means the two move
+     together. A padlock rather than a chain link because the control is a toggle with a state
+     to read at a glance, and the two padlock silhouettes differ at 16px in a way two chain
+     links do not: the shackle is closed on one and open on the other. */
+  lock: stroke('<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>'),
+  unlock: stroke('<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/>'),
+  // Align one object to its frame (lucide align-*-justify-*): a rule, and a bar pulled to it.
+  alignLeft: stroke('<path d="M3 3v18"/><rect x="7" y="7" width="12" height="10" rx="2"/>'),
+  alignCenter: stroke('<path d="M12 3v4"/><path d="M12 17v4"/><rect x="5" y="7" width="14" height="10" rx="2"/>'),
+  alignRight: stroke('<path d="M21 3v18"/><rect x="5" y="7" width="12" height="10" rx="2"/>'),
+  alignTop: stroke('<path d="M3 3h18"/><rect x="7" y="7" width="10" height="12" rx="2"/>'),
+  alignMiddle: stroke('<path d="M3 12h4"/><path d="M17 12h4"/><rect x="7" y="5" width="10" height="14" rx="2"/>'),
+  alignBottom: stroke('<path d="M3 21h18"/><rect x="7" y="5" width="10" height="12" rx="2"/>'),
+  // Mirror across an axis (lucide flip-horizontal-2 / flip-vertical-2).
+  flipH: stroke('<path d="m3 7 5 5-5 5V7"/><path d="m21 7-5 5 5 5V7"/><path d="M12 20v2"/><path d="M12 14v2"/><path d="M12 8v2"/><path d="M12 2v2"/>'),
+  flipV: stroke('<path d="m17 3-5 5-5-5h10"/><path d="m17 21-5-5-5 5h10"/><path d="M4 12H2"/><path d="M10 12H8"/><path d="M16 12h-2"/><path d="M22 12h-2"/>'),
+  // Back to where it started (lucide corner-up-left).
+  resetPosition: stroke('<polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/>'),
+  // The overflow of a toolbar group (lucide more-horizontal).
+  more: stroke('<circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/>'),
 } as const;
 
 /** Parse a raw SVG string into an element. */

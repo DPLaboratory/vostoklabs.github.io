@@ -102,8 +102,11 @@ export interface Viewer {
   setTheme(theme: string): void;
   /** Suspend orbit — while dragging a handle, for instance. */
   setOrbitEnabled(on: boolean): void;
-  /** A 2x-supersampled PNG of the current view, for cover images. */
+  /** A 2x-supersampled PNG of the current view, at the viewport's own size. */
   renderToPng(): Promise<Blob | null>;
+  /** A square, framed PNG of the whole model for a cover image: a fixed three-quarter
+   *  angle, the build plate off, and an explicit edge in pixels (default 512). */
+  renderCoverPng(edge?: number): Promise<Blob | null>;
   /** Escape hatches for generator-specific overlays. */
   readonly scene: THREE.Scene;
   readonly camera: THREE.PerspectiveCamera;
@@ -125,6 +128,12 @@ export interface Viewer {
 const FLOOR_GAP = 0.06;
 const NEAR = 0.1;
 const FAR = 5000;
+
+/** Cover framing: how much air round the model's bounding sphere, and the fixed
+ *  three-quarter direction the cover is shot from (Z up, the same quarter the 'iso'
+ *  preset uses, so a cover looks like the view the user has been working in). */
+const COVER_PAD = 1.15;
+const COVER_DIR = new THREE.Vector3(1, -1, 0.75).normalize();
 
 /** Smallest depth difference the 24-bit buffer can still tell apart at distance `z`. */
 function depthResolution(z: number): number {
@@ -508,8 +517,13 @@ export function createViewer(container: HTMLElement, opts: ViewerOptions = {}): 
   resizeObserver.observe(container);
 
   let raf = 0;
+  /** True while `renderCoverPng` owns the canvas. The self-heal below would otherwise
+   *  resize the drawing buffer back to the viewport between the cover render and the
+   *  `toBlob` that reads it — which clears it, and the cover comes back blank. */
+  let capturing = false;
   (function animate() {
     raf = requestAnimationFrame(animate);
+    if (capturing) return;
     // Self-heal the canvas size: the stage is a CSS-grid cell whose height
     // settles a frame or two after the viewer is built, and neither the window
     // 'resize' event nor the first ResizeObserver callback reliably catches
@@ -558,6 +572,75 @@ export function createViewer(container: HTMLElement, opts: ViewerOptions = {}): 
       ? null
       : new MutationObserver(() => setTheme(readTheme()));
   themeObserver?.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+  /**
+   * A cover image, deliberately NOT a screenshot of the viewport.
+   *
+   * A screenshot ships whatever the user last dragged: the model half out of frame, the
+   * build plate and its grid filling most of the picture, and a PNG sized by the pane —
+   * foldbox's was 1704 x 1698 and about 3 MB as a data URL, six times the clicker's.
+   * This frames the model itself, square, from one fixed three-quarter angle, on the flat
+   * scene background, at `edge` pixels a side.
+   *
+   * The angle is fixed rather than the user's, so two exports of the same box produce the
+   * same cover: a cover is the product shot, not a record of the last orbit.
+   */
+  async function renderCoverPng(edge = 512): Promise<Blob | null> {
+    /* Restore from the RENDERER's own size, not from `container.clientWidth`. The container
+       measures 0 x 0 whenever its pane is hidden or mid-layout, and restoring to that leaves
+       the canvas permanently 0 x 0 — the viewport goes black until a window resize. */
+    const prevSize = renderer.getSize(new THREE.Vector2());
+    const prevRatio = renderer.getPixelRatio();
+    const prevAspect = camera.aspect;
+    const prevPos = camera.position.clone();
+    const prevTarget = controls.target.clone();
+    const plateWasVisible = buildPlate.object.visible;
+
+    capturing = true;
+    // `finally`, because a throw in here would otherwise leave the viewport frozen at 512 px
+    // with the plate gone and the render loop parked: the capture owns the canvas, so it has
+    // to hand it back whatever happens.
+    try {
+      buildPlate.object.visible = false;
+      root.updateMatrixWorld(true);
+      rig.updateMatrixWorld(true);
+
+      // Both the flat parts and anything hierarchical (a fold rig), so a model that lives
+      // only in the rig — which is every foldbox box — is framed rather than missed.
+      const box = new THREE.Box3();
+      if (partMeshes.length) box.expandByObject(root);
+      if (rig.children.length) box.expandByObject(rig);
+      if (!box.isEmpty()) {
+        const centre = box.getCenter(new THREE.Vector3());
+        // Sphere radius, so the fit holds at any angle, and the frame is square, so the
+        // vertical FOV governs both directions.
+        const radius = Math.max(box.getSize(new THREE.Vector3()).length() / 2, 1);
+        const dist = (radius / Math.sin((camera.fov * Math.PI) / 360)) * COVER_PAD;
+        camera.position.copy(centre).addScaledVector(COVER_DIR, dist);
+        camera.lookAt(centre);
+      }
+      camera.aspect = 1;
+      camera.updateProjectionMatrix();
+
+      // `updateStyle: false` — the drawing buffer changes shape, the canvas element on
+      // screen does not, so nothing flickers while the shot is taken.
+      renderer.setPixelRatio(1);
+      renderer.setSize(edge, edge, false);
+      renderer.render(scene, camera);
+      return await new Promise<Blob | null>((res) => renderer.domElement.toBlob((b) => res(b), 'image/png'));
+    } finally {
+      renderer.setPixelRatio(prevRatio);
+      renderer.setSize(prevSize.x, prevSize.y, false);
+      camera.aspect = prevAspect;
+      camera.updateProjectionMatrix();
+      camera.position.copy(prevPos);
+      controls.target.copy(prevTarget);
+      controls.update(); // re-aims the camera at the user's own orbit target
+      buildPlate.object.visible = plateWasVisible;
+      renderer.render(scene, camera); // put the user's frame back before they can see this one
+      capturing = false;
+    }
+  }
 
   async function renderToPng(): Promise<Blob | null> {
     const w = container.clientWidth;
@@ -632,6 +715,7 @@ export function createViewer(container: HTMLElement, opts: ViewerOptions = {}): 
       controls.enabled = on;
     },
     renderToPng,
+    renderCoverPng,
     scene,
     camera,
     root,

@@ -250,3 +250,25 @@ export function iconButton(opts: IconButtonOptions): ButtonHandle {
 export function buttonRow(...buttons: HTMLElement[]): HTMLElement {
   return el('div', { className: 'vl-btn-row' }, buttons);
 }
+
+export interface ButtonGridOptions {
+  buttons: HTMLElement[];
+  /** Columns. Default 2. */
+  columns?: number;
+}
+
+/**
+ * Buttons in a wrapping grid, all the same width.
+ *
+ * `buttonRow` is one flex line with `flex: 1` on each child, which is right for two or three
+ * actions and wrong for a set of choices: the carabiner's six starter presets on one line are
+ * six buttons too narrow to read their own names. A grid is the honest shape for "here are the
+ * options" — and it is here rather than as an app-local class because the alternative, six
+ * `.kc-preset-grid`-style rules across six generators, is precisely how `.vl-btn` acquired
+ * 163 impostors.
+ */
+export function buttonGrid(opts: ButtonGridOptions): HTMLElement {
+  const grid = el('div', { className: 'vl-btn-grid' }, opts.buttons);
+  if (opts.columns) grid.style.setProperty('--btn-cols', String(opts.columns));
+  return grid;
+}

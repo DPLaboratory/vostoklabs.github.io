@@ -267,7 +267,12 @@
 .vl-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 
 .vl-btn-row { display: flex; gap: 10px; }
-.vl-btn-row .vl-btn { flex: 1; }
+/* `min-width: 0` is what makes `flex: 1` mean what it says. A flex item's default
+   `min-width: auto` refuses to shrink below its own content, so three labelled buttons whose
+   text does not fit push straight past the panel and the last one is clipped by the sidebar's
+   edge — reported as "the right side of the left menu is cut off", and it was. With this they
+   share the width and ellipsise instead. */
+.vl-btn-row .vl-btn { flex: 1; min-width: 0; overflow: hidden; }
 
 /* Keyboard focus ring. */
 .vl-btn:focus-visible,
@@ -279,3 +284,13 @@
 }
 
 /* Comfortable touch targets on phones. */
+
+/* Buttons as a set of choices rather than a row of actions — see `buttonGrid()`. The column
+   count is a custom property so the count lives at the call site, not in a new rule per app. */
+.vl-btn-grid {
+  --btn-cols: 2;
+  display: grid;
+  grid-template-columns: repeat(var(--btn-cols), minmax(0, 1fr));
+  gap: var(--space-2);
+}
+.vl-btn-grid > .vl-btn { width: 100%; }

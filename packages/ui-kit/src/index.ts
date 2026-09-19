@@ -11,6 +11,12 @@ export {
   type LicenseModalOptions,
   type LicenseNudgeOptions,
 } from './components/license';
+export {
+  openLicenceOffer,
+  openLicenceCertificate,
+  type LicenceOfferOptions,
+  type LicenceCertificateOptions,
+} from './components/lifetime-licence';
 export { topbarLinks, type TopbarLinksOptions } from './components/topbar-links';
 export { resolveTheme, applyTheme, themeToggleButton, type ThemeToggleOptions } from './components/theme';
 export {
@@ -47,7 +53,7 @@ export {
   type ChangelogButtonOptions,
 } from './components/changelog';
 export { supportLinks } from './components/support-links';
-export { exportPanel, buildExportMetadata, type ExportFormat, type ExportPanelOptions } from './components/export-panel';
+export { exportPanel, setExportNote, buildExportMetadata, type ExportFormat, type ExportPanelOptions } from './components/export-panel';
 export { captureCover, type RendererLike } from './components/cover-image';
 export {
   FILAMENTS,
@@ -89,17 +95,25 @@ export {
   button,
   iconButton,
   buttonRow,
+  buttonGrid,
   type ButtonEmphasis,
   type ButtonOptions,
   type ButtonHandle,
   type IconButtonOptions,
+  type ButtonGridOptions,
 } from './components/button';
+export {
+  historyControls,
+  type HistoryControlsOptions,
+  type HistoryControlsHandle,
+} from './components/history-controls';
 export { dpad, type DpadOptions, type DpadHandle } from './components/dpad';
 export { nudgePad, type NudgePadOptions, type NudgeAxisOptions, type NudgePadHandle } from './components/nudge-pad';
 export { colorPopover, closeColorPopover, type ColorPopoverOptions, type ColorPopoverOption, type ColorPopoverHandle } from './components/color-popover';
 export { busyChip, type BusyChipOptions, type BusyChipHandle } from './components/busy-chip';
 export { section, collapsibleSection, makeCollapsible, type SectionOptions } from './components/section';
 export { drawer, closeAllDrawers, type DrawerOptions, type DrawerHandle } from './components/drawer';
+export { splitDialog, type SplitDialogOptions } from './components/split-dialog';
 export {
   openSvgImport,
   type SvgImportMode,
@@ -109,6 +123,7 @@ export {
   type SvgImportTrace,
   type SvgImportOptions,
 } from './components/svg-import';
+export { flattenSvgStyles } from './svg-styles';
 export {
   symbolPickerButton,
   openSymbolPicker,
@@ -116,6 +131,13 @@ export {
   type SymbolCategory,
   type SymbolPickerOptions,
 } from './components/symbol-picker';
+export {
+  fontPicker,
+  type FontPickerFont,
+  type FontPickerOptions,
+  type FontPickerHandle,
+} from './components/font-picker';
+export { fontCards, type FontCardsOptions, type FontCardsHandle } from './components/font-cards';
 export {
   sourceCards,
   dropZone,
@@ -208,3 +230,38 @@ export { rememberImport, rememberBytes, rememberFile, chooseFile, hostAssetUrl, 
 export { bindExternalLinks } from './external-links';
 
 export const UI_KIT_VERSION = '0.1.0';
+
+// The editor frame — the second house layout, for tools that compose on a 2D canvas rather
+// than parametrise one model. See components/editor-shell.ts.
+export {
+  suiteBar,
+  designShell,
+  designBody,
+  studioView,
+  toolRail,
+  toolbar,
+  statusBar,
+  floatingPanel,
+  popover,
+  closeAllPopovers,
+  type SuiteTab,
+  type SuiteBarOptions,
+  type SuiteBar,
+  type DesignShellOptions,
+  type DesignShell,
+  type DesignBodyOptions,
+  type DesignBody,
+  type StudioViewOptions,
+  type StudioView,
+  type ToolRailItem,
+  type ToolRailOptions,
+  type ToolRail,
+  type ToolbarOptions,
+  type ToolbarHandle,
+  type StatusBarOptions,
+  type StatusBar,
+  type FloatingPanelOptions,
+  type FloatingPanel,
+  type PopoverOptions,
+  type PopoverHandle,
+} from './components/editor-shell';

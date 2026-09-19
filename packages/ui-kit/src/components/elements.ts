@@ -393,8 +393,12 @@ export function textField(opts: TextFieldOptions): TextFieldHandle {
   input.id = id;
   const label = el('label', { text: opts.label });
   label.setAttribute('for', id);
+  if (!opts.label) input.setAttribute('aria-label', opts.placeholder ?? opts.title ?? 'Text');
 
-  const root = el('div', { className: 'vl-field' }, [label, input]) as unknown as TextFieldHandle;
+  const root = el('div', { className: 'vl-field' }, [
+    ...(opts.label ? [label] : []),
+    input,
+  ]) as unknown as TextFieldHandle;
   Object.defineProperty(root, 'value', { get: () => input.value });
   Object.defineProperty(root, 'field', { get: () => input });
   root.setValue = (value, notify = false) => {

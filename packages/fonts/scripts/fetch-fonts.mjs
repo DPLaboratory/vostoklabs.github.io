@@ -2,7 +2,7 @@
 // apps/name-keychain/src/fonts/, then regenerates the font registry + @font-face CSS.
 // Idempotent: skips fonts already present. Re-runnable.
 import { writeFile, readFile, readdir, access } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
+import { existsSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -182,30 +182,154 @@ const MAP = {
   'jua': ['Jua', 'Comic'],
   'do-hyeon': ['Do Hyeon', 'Clean'],
   'black-han-sans': ['Black Han Sans', 'Clean'],
+
+  // ----- added 2026-09-18: 93 more faces, every one verified OFL-1.1 or
+  // Apache-2.0 against its directory in the google/fonts repo (ofl/ vs apache/ IS
+  // the licence). Nothing here is UFL. -----
+  // Mono
+  'jetbrains-mono': ['JetBrains Mono', 'Mono', true],
+  'roboto-mono': ['Roboto Mono', 'Mono'],
+  'ibm-plex-mono': ['IBM Plex Mono', 'Mono'],
+  'inconsolata': ['Inconsolata', 'Mono'],
+  'source-code-pro': ['Source Code Pro', 'Mono'],
+  'fira-mono': ['Fira Mono', 'Mono'],
+  'dm-mono': ['DM Mono', 'Mono'],
+  'martian-mono': ['Martian Mono', 'Mono'],
+  'syne-mono': ['Syne Mono', 'Mono'],
+  'xanh-mono': ['Xanh Mono', 'Mono'],
+  // Pixel
+  'micro-5': ['Micro 5', 'Pixel'],
+  'jersey-15': ['Jersey 15', 'Pixel'],
+  'jersey-25': ['Jersey 25', 'Pixel'],
+  'tiny5': ['Tiny5', 'Pixel'],
+  'workbench': ['Workbench', 'Pixel'],
+  'sixtyfour': ['Sixtyfour', 'Pixel'],
+  // Serif
+  'libre-baskerville': ['Libre Baskerville', 'Serif', true],
+  'merriweather': ['Merriweather', 'Serif'],
+  'pt-serif': ['PT Serif', 'Serif'],
+  'eb-garamond': ['EB Garamond', 'Serif'],
+  'spectral': ['Spectral', 'Serif'],
+  'literata': ['Literata', 'Serif'],
+  'petrona': ['Petrona', 'Serif'],
+  'gelasio': ['Gelasio', 'Serif'],
+  'faustina': ['Faustina', 'Serif'],
+  // Slab
+  'kreon': ['Kreon', 'Slab'],
+  'aleo': ['Aleo', 'Slab'],
+  'coustard': ['Coustard', 'Slab'],
+  'podkova': ['Podkova', 'Slab'],
+  'rufina': ['Rufina', 'Slab'],
+  'alegreya-sans-sc': ['Alegreya Sans SC', 'Slab'],
+  // Comic
+  'comic-neue': ['Comic Neue', 'Comic', true],
+  'short-stack': ['Short Stack', 'Comic'],
+  'itim': ['Itim', 'Comic'],
+  'mali': ['Mali', 'Comic'],
+  'chicle': ['Chicle', 'Comic'],
+  'sansita': ['Sansita', 'Comic'],
+  'delius-swash-caps': ['Delius Swash Caps', 'Comic'],
+  // Display
+  'bungee-shade': ['Bungee Shade', 'Display', true],
+  'bungee-inline': ['Bungee Inline', 'Display'],
+  'chonburi': ['Chonburi', 'Display'],
+  'gravitas-one': ['Gravitas One', 'Display'],
+  'days-one': ['Days One', 'Display'],
+  'secular-one': ['Secular One', 'Display'],
+  'sancreek': ['Sancreek', 'Display'],
+  'rammetto-one': ['Rammetto One', 'Display'],
+  'dela-gothic-one': ['Dela Gothic One', 'Display', true],
+  // Script
+  'tangerine': ['Tangerine', 'Script'],
+  'pinyon-script': ['Pinyon Script', 'Script'],
+  'italianno': ['Italianno', 'Script'],
+  'berkshire-swash': ['Berkshire Swash', 'Script'],
+  'lobster-two': ['Lobster Two', 'Script'],
+  'grand-hotel': ['Grand Hotel', 'Script'],
+  'bad-script': ['Bad Script', 'Script'],
+  'petit-formal-script': ['Petit Formal Script', 'Script'],
+  // Handwriting
+  'shadows-into-light': ['Shadows Into Light', 'Handwriting'],
+  'just-another-hand': ['Just Another Hand', 'Handwriting'],
+  'rock-salt': ['Rock Salt', 'Handwriting'],
+  'reenie-beanie': ['Reenie Beanie', 'Handwriting'],
+  'homemade-apple': ['Homemade Apple', 'Handwriting'],
+  'nothing-you-could-do': ['Nothing You Could Do', 'Handwriting'],
+  'cedarville-cursive': ['Cedarville Cursive', 'Handwriting'],
+  'sue-ellen-francisco': ['Sue Ellen Francisco', 'Handwriting'],
+  // Spooky
+  'rubik-burned': ['Rubik Burned', 'Spooky'],
+  'rubik-puddles': ['Rubik Puddles', 'Spooky'],
+  'rubik-beastly': ['Rubik Beastly', 'Spooky'],
+  'rubik-distressed': ['Rubik Distressed', 'Spooky'],
+  'rubik-moonrocks': ['Rubik Moonrocks', 'Spooky', true],
+  'rubik-vinyl': ['Rubik Vinyl', 'Spooky'],
+  'rubik-spray-paint': ['Rubik Spray Paint', 'Spooky'],
+  'rubik-storm': ['Rubik Storm', 'Spooky'],
+  'flavors': ['Flavors', 'Spooky'],
+  'lacquer': ['Lacquer', 'Spooky'],
+  // Clean
+  'inter': ['Inter', 'Clean'],
+  'work-sans': ['Work Sans', 'Clean'],
+  'raleway': ['Raleway', 'Clean'],
+  'manrope': ['Manrope', 'Clean'],
+  'outfit': ['Outfit', 'Clean'],
+  'lexend': ['Lexend', 'Clean'],
+  'urbanist': ['Urbanist', 'Clean'],
+  'sora': ['Sora', 'Clean'],
+  'figtree': ['Figtree', 'Clean'],
+  'archivo': ['Archivo', 'Clean'],
+  'cabin': ['Cabin', 'Clean'],
+  'exo-2': ['Exo 2', 'Clean'],
+  // Tech
+  'unica-one': ['Unica One', 'Tech'],
+  'tomorrow': ['Tomorrow', 'Tech'],
+  'khand': ['Khand', 'Tech'],
+  'saira-condensed': ['Saira Condensed', 'Tech'],
 };
+
+/** What a NEW face is fetched with.
+ *
+ *  The API serves a handful of prebuilt subset combinations rather than cutting one
+ *  to order, and anything beyond latin-ext lands you in the "everything" build: Dela
+ *  Gothic One is 43 KB at `latin,latin-ext` and 2419 KB the moment you also ask for
+ *  cyrillic — because that build carries its Japanese too. The decorative Rubiks were
+ *  each dragging in Hebrew the same way.
+ *
+ *  So the 90 faces added on 2026-09-18 are latin display faces and are fetched, and
+ *  REPORTED, as exactly that: `isFontSupported` will not offer them for a Cyrillic or
+ *  Greek name, which is the truth about the file rather than a promise it cannot keep.
+ *  The 152 older faces are untouched — many of them do carry Cyrillic, and a face
+ *  already on disk keeps reporting the subsets that file really contains. */
+const USEFUL_SUBSETS = ['latin', 'latin-ext'];
 
 async function fetchTtfUrl(slug) {
   const metaResp = await fetch(`https://gwfh.mranftl.com/api/fonts/${slug}`);
   if (!metaResp.ok) throw new Error(`meta HTTP ${metaResp.status}`);
   const meta = await metaResp.json();
-  const subsets = meta.subsets ? meta.subsets.join(',') : 'latin';
+  const all = meta.subsets && meta.subsets.length ? meta.subsets : ['latin'];
+  // Never empty: a face with no latin at all still has to come back with something.
+  const wanted = all.filter((x) => USEFUL_SUBSETS.includes(x));
+  const useful = wanted.length ? wanted : all;
 
-  const r = await fetch(`https://gwfh.mranftl.com/api/fonts/${slug}?subsets=${subsets}`);
+  const r = await fetch(`https://gwfh.mranftl.com/api/fonts/${slug}?subsets=${useful.join(',')}`);
   if (!r.ok) throw new Error(`meta HTTP ${r.status}`);
   const j = await r.json();
   const variants = j.variants || [];
   const reg = variants.find((v) => v.id === 'regular') || variants.find((v) => v.id === '400') || variants[0];
   if (!reg || !reg.ttf) throw new Error('no ttf variant');
-  return { url: reg.ttf, subsets: meta.subsets || ['latin'] };
+  return { url: reg.ttf, subsets: useful, fullSubsets: all };
 }
 
 async function download(slug) {
   const dest = path.join(FONTS_DIR, `${slug}.ttf`);
   let cachedSubsets = ['latin'];
   try {
-    const { url, subsets } = await fetchTtfUrl(slug);
+    const { url, subsets, fullSubsets } = await fetchTtfUrl(slug);
     cachedSubsets = subsets;
-    if (existsSync(dest)) return { slug, status: 'exists', subsets };
+    // An existing file was fetched under whatever policy was in force then, so it
+    // reports what it actually holds — not what we would ask for today.
+    if (existsSync(dest)) return { slug, status: 'exists', subsets: fullSubsets };
     const r = await fetch(url);
     if (!r.ok) throw new Error(`ttf HTTP ${r.status}`);
     const buf = Buffer.from(await r.arrayBuffer());
@@ -253,21 +377,29 @@ for (const r of results) {
 const files = (await readdir(FONTS_DIR)).filter((f) => f.endsWith('.ttf') && f !== 'icon-fallback.ttf');
 const present = new Set(files.map((f) => f.replace('.ttf', '')));
 
+/** Bytes on disk, so an app can budget its own bundle instead of hardcoding a list.
+ *
+ *  The fold-up box goes to MakerLab as a ZIP and the developer guide asks for 10 MB
+ *  or less, so it cannot ship all 241 faces (32.9 MB of TTF). Before this it shipped
+ *  a hand-written list of eight. With the size on the record it can say "every face
+ *  under 120 KB" in one line and keep up with the library on its own. */
+const bytesOf = (slug) => statSync(path.join(FONTS_DIR, `${slug}.ttf`)).size;
+
 const rows = Object.entries(MAP)
   .filter(([slug]) => present.has(slug))
-  .map(([slug, [label, category, curated, subsets]]) => ({ id: slug, label, category, curated: !!curated, subsets: subsets || ['latin'] }));
+  .map(([slug, [label, category, curated, subsets]]) => ({ id: slug, label, category, curated: !!curated, subsets: subsets || ['latin'], bytes: bytesOf(slug) }));
 
 // Any ttf on disk not in MAP: include with a guessed label + 'Display'.
 for (const slug of present) {
   if (!MAP[slug]) {
     const label = slug.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
-    rows.push({ id: slug, label, category: 'Display', curated: false, subsets: ['latin'] });
+    rows.push({ id: slug, label, category: 'Display', curated: false, subsets: ['latin'], bytes: bytesOf(slug) });
   }
 }
 rows.sort((a, b) => a.label.localeCompare(b.label));
 
 const ts = `// AUTO-GENERATED by scripts/fetch-fonts.mjs — do not edit by hand.
-export interface FontChoice { id: string; label: string; category: string; curated: boolean; subsets: string[]; }
+export interface FontChoice { id: string; label: string; category: string; curated: boolean; subsets: string[]; /** TTF size on disk, bytes. Absent for a face injected at RUNTIME — the keychain and the pen topper both let someone drop their own font in, and that one never came from this registry. */ bytes?: number; }
 export const FONTS: FontChoice[] = ${JSON.stringify(rows, null, 2)};
 `;
 await writeFile(path.join(APP, 'src', 'registry.ts'), ts);
@@ -299,16 +431,20 @@ ${rows.map((r) => `| ${r.label} | ${r.category} | ${specimen(r.label)} |`).join(
 
 ## Icon fallback
 
-\`icon-fallback.ttf\` is **Font Awesome 6 Free (Solid)** — https://fontawesome.com. It is not a
-pickable typeface: it stands in for glyphs the chosen font is missing, and it is the source of the
-symbol library in \`src/icons.ts\` (1392 glyphs, generated by \`scripts/fetch-icons.mjs\`).
+\`icon-fallback.ttf\` is **Material Symbols Rounded**, instanced at \`FILL=1\` and subset to the
+glyphs the picker offers — https://fonts.google.com/icons. It is not a pickable typeface: it
+stands in for glyphs the chosen font is missing, and it is the source of the symbol library in
+\`src/icons.ts\` (generated by \`scripts/fetch-icons.mjs\`).
 
-- Icons: **CC BY 4.0** — https://creativecommons.org/licenses/by/4.0/
-- Font files: **SIL OFL 1.1** — https://scripts.sil.org/OFL
+- Icons and font: **Apache License 2.0** ([\`LICENSE-APACHE-2.0.txt\`](LICENSE-APACHE-2.0.txt))
+- © Google LLC
 
-© Fonticons, Inc. Both licences permit bundling in commercial software with attribution, and this
-file is that attribution. It is emitted here rather than hand-written into CREDITS.md because this
-script overwrites that file wholesale — the attribution was missing for exactly that reason.
+Apache-2.0 places no attribution requirement on a work made WITH the icons, which is the whole
+reason this is not Font Awesome any more. Font Awesome Free licenses its icons **CC BY 4.0**, and
+CC BY attaches to every copy and derivative — so every dieline, keychain and cut file a user
+exported carried an attribution obligation they had never been told about. A platform security
+review of the fold-up box dist caught it on 2026-09-18. Apache asks only that the licence text
+travel with the bundle, which is what the file above is for.
 `;
 await writeFile(path.join(FONTS_DIR, 'CREDITS.md'), credits);
 

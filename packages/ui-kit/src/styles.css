@@ -7,7 +7,11 @@
 @import './components.css';
 @import './elements.css';
 @import './patterns.css';
+@import './split-dialog.css';
 @import './drawer.css';
 @import './changelog.css';
 @import './symbol-picker.css';
+@import './font-picker.css';
 @import './app-shell.css';
+@import './editor-shell.css';
+@import './lifetime-licence.css';

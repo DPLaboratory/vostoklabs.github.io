@@ -355,9 +355,11 @@
 .vl-tabs--cards .vl-tab svg { width: 18px; height: 18px; flex: 0 0 auto; }
 .vl-tabs--cards .vl-tab.active { border-color: var(--accent); }
 .vl-tabs--cards .vl-tabs__indicator { border-radius: var(--radius-btn); }
-/* An odd option count leaves one card alone under a half-empty row — span it instead. Only
-   fires on the actual last card, so an even count (nothing to balance) is untouched. */
-.vl-tabs--cards .vl-tab:last-child:nth-child(odd) { grid-column: 1 / -1; justify-content: center; }
+/* An odd option count leaves one card alone under a half-empty row — span it instead. The
+   sliding indicator is the FIRST child, so the last card of an odd count sits at an even
+   child index: `:nth-child(odd)` here stretched the fourth of four (the laser keychain's
+   Symbol tab) and left the fifth of five alone. */
+.vl-tabs--cards .vl-tab:last-child:nth-child(even) { grid-column: 1 / -1; justify-content: center; }
 
 /* ---------- Toggle switch (iOS style, green when on) ---------- */
 .vl-switch-row {
@@ -420,6 +422,34 @@
 }
 .vl-slider-head > label { color: var(--muted); font-size: var(--label-fs); }
 .vl-slider-head > .vl-val-fit { margin-left: auto; }
+
+/* The "back to the recommended 3.2 mm" pill — see `defaultMark()` in components/controls.ts.
+
+   Deliberately quieter than every other control in the row: it is a footnote to the caption,
+   not a second thing to press. It shows only while the value differs, so its arrival is what
+   carries the meaning — a pill sitting there permanently would just be more furniture. */
+.vl-default-mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 7px 1px 5px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.5;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    color var(--dur-hover) var(--ease-standard),
+    border-color var(--dur-hover) var(--ease-standard);
+}
+.vl-default-mark > svg { width: 11px; height: 11px; flex: none; }
+.vl-default-mark:hover { color: var(--accent); border-color: var(--accent); }
+.vl-default-mark:focus-visible { outline: none; box-shadow: var(--ring); }
 
 /*
   The value box, sized to what it is actually showing.
@@ -505,6 +535,9 @@
 .vl-field textarea,
 .vl-field select {
   width: 100%;
+  /* Padding and border inside the 100%, or the field overruns its column by 2 × padding and
+     hands the whole sidebar a horizontal scrollbar — which is what it did in the laser keychain. */
+  box-sizing: border-box;
   background: var(--panel-2);
   border: 1px solid var(--line);
   color: var(--text);

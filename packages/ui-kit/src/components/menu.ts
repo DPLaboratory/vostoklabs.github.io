@@ -15,6 +15,8 @@ import { svgEl } from '../icons';
 
 export interface MenuItem {
   label: string;
+  /** Shown at the trailing edge in the mono face — 'Ctrl+D', 'Del'. Display only. */
+  shortcut?: string;
   /** Raw SVG string from `ICONS`. */
   icon?: string;
   disabled?: boolean;
@@ -31,6 +33,11 @@ export type MenuEntry = MenuItem | MenuSeparator;
 export interface MenuOptions {
   /** The element the menu hangs off. Its rect decides placement. */
   anchor: HTMLElement;
+  /** Open at a pointer position instead of under the anchor — a right-click menu. The
+   *  anchor only gets focus back: an outside click is measured against the menu alone,
+   *  because the anchor of a context menu is the whole canvas, and a click anywhere on it
+   *  must close the menu. */
+  at?: { x: number; y: number };
   entries: MenuEntry[];
   /** Horizontal alignment against the anchor. Default `start`. */
   align?: 'start' | 'end';
@@ -71,6 +78,7 @@ export function openMenu(opts: MenuOptions): MenuHandle {
     });
     if (entry.icon) btn.append(svgEl(entry.icon));
     btn.append(document.createTextNode(entry.label));
+    if (entry.shortcut) btn.append(el('kbd', { className: 'vl-menu__shortcut', text: entry.shortcut }));
     if (entry.disabled) btn.disabled = true;
     btn.addEventListener('click', () => {
       if (btn.disabled) return;
@@ -84,7 +92,9 @@ export function openMenu(opts: MenuOptions): MenuHandle {
   document.body.append(root);
 
   // Measure after mounting, then place. Flips up or left when the menu would overflow.
-  const anchorBox = opts.anchor.getBoundingClientRect();
+  const anchorBox = opts.at
+    ? new DOMRect(opts.at.x, opts.at.y, 0, 0)
+    : opts.anchor.getBoundingClientRect();
   const menuBox = root.getBoundingClientRect();
   const gap = 6;
 
@@ -118,7 +128,7 @@ export function openMenu(opts: MenuOptions): MenuHandle {
     open.delete(close);
     document.removeEventListener('pointerdown', onOutside, true);
     document.removeEventListener('keydown', onKey, true);
-    window.removeEventListener('scroll', close, true);
+    window.removeEventListener('scroll', onScroll, true);
     window.removeEventListener('resize', close);
     root.removeAttribute('data-open');
     // Let the exit transition play, then go. Timed rather than transitionend-gated: under
@@ -129,7 +139,16 @@ export function openMenu(opts: MenuOptions): MenuHandle {
 
   function onOutside(e: PointerEvent) {
     const target = e.target as Node;
-    if (!root.contains(target) && !opts.anchor.contains(target)) close();
+    if (root.contains(target)) return;
+    if (!opts.at && opts.anchor.contains(target)) return;
+    close();
+  }
+
+  /* A long menu scrolls inside itself (`.vl-menu` has a max-height). That scroll must not
+     be the scroll that closes it — only the page moving under the menu does. */
+  function onScroll(e: Event) {
+    if (root.contains(e.target as Node)) return;
+    close();
   }
 
   function onKey(e: KeyboardEvent) {
@@ -153,7 +172,7 @@ export function openMenu(opts: MenuOptions): MenuHandle {
 
   document.addEventListener('pointerdown', onOutside, true);
   document.addEventListener('keydown', onKey, true);
-  window.addEventListener('scroll', close, true);
+  window.addEventListener('scroll', onScroll, true);
   window.addEventListener('resize', close);
   open.add(close);
 

@@ -318,52 +318,6 @@ importers:
         specifier: ^6.0.5
         version: 6.4.3(@types/node@24.13.3)(lightningcss@1.33.0)
 
-  apps/laser-slot:
-    dependencies:
-      '@vostok/brand':
-        specifier: workspace:*
-        version: link:../../config
-      '@vostok/plates':
-        specifier: workspace:*
-        version: link:../../packages/plates
-      '@vostok/ui-kit':
-        specifier: workspace:*
-        version: link:../../packages/ui-kit
-      '@vostok/viewer':
-        specifier: workspace:*
-        version: link:../../packages/viewer
-      d3-contour:
-        specifier: ^4.0.2
-        version: 4.0.2
-      fflate:
-        specifier: ^0.8.3
-        version: 0.8.3
-      manifold-3d:
-        specifier: ^3.0.1
-        version: 3.5.1(@gltf-transform/core@4.4.1)(@gltf-transform/extensions@4.4.1)(@gltf-transform/functions@4.4.1)(esbuild-wasm@0.27.7)
-      pica:
-        specifier: ^10.0.2
-        version: 10.0.2
-      three:
-        specifier: ^0.171.0
-        version: 0.171.0
-    devDependencies:
-      '@types/d3-contour':
-        specifier: ^3.0.6
-        version: 3.0.6
-      '@types/three':
-        specifier: ^0.171.0
-        version: 0.171.0
-      esbuild:
-        specifier: ^0.24.0
-        version: 0.24.2
-      typescript:
-        specifier: ^5.7.2
-        version: 5.9.3
-      vite:
-        specifier: ^6.0.5
-        version: 6.4.3(@types/node@24.13.3)(lightningcss@1.33.0)
-
   apps/magnet-generator:
     dependencies:
       '@vostok/brand':
@@ -511,9 +465,9 @@ importers:
         specifier: ^1.3.4
         version: 1.3.4
     devDependencies:
-      '@fortawesome/fontawesome-free':
-        specifier: ^6.5.2
-        version: 6.5.2
+      subset-font:
+        specifier: ^2.7.0
+        version: 2.7.0
       typescript:
         specifier: ^5.7.2
         version: 5.9.3
@@ -1339,6 +1293,9 @@ packages:
   anynum@1.0.1:
     resolution: {integrity: sha512-N6//FLET/tXYNM/F6ABca1oH6fWB+KlTt909Le28WMDBk8oaT4vY17DCrwg2MvmuqUKt3Ni4N5dGJ/EoBgcO6A==}
 
+  argparse@2.0.1:
+    resolution: {integrity: sha512-8+9WqebbFzpX9OR+Wa6O29asIogeRMzcGtAINdpMHHyAg10f05aSFVBbcEqGf/PXw1EjAZ+q2/bEBg3DvurK3Q==}
+
   commander@13.1.0:
     resolution: {integrity: sha512-/rFeCpNJQbhSZjGVwO9RFV3xPqbnERS8MmIQzCtD/zl6gpJuV/bMLuN92oG3F7d8oDEHHRrujSXNUr8fpjntKw==}
     engines: {node: '>=18'}
@@ -1400,6 +1357,9 @@ packages:
   fflate@0.8.3:
     resolution: {integrity: sha512-tbZNuJrLwGUp3zshBtdy4W+ORxZuIh8a5ilyIEQDC5rY1f3U20JMry0Ll3WBzU58EZKsEuJFXhb5gwv8CsPvgA==}
 
+  fontverter@2.0.0:
+    resolution: {integrity: sha512-DFVX5hvXuhi1Jven1tbpebYTCT9XYnvx6/Z+HFUPb7ZRMCW+pj2clU9VMhoTPgWKPhAs7JJDSk3CW1jNUvKCZQ==}
+
   fsevents@2.3.3:
     resolution: {integrity: sha512-5xoDfX+fL7faATnagmWPpbFtwh/R77WmMMqqHGS65C3vvB0YHrgF+B1YmZ3441tMj5n63k0212XNoJwzlhffQw==}
     engines: {node: ^8.16.0 || ^10.6.0 || >=11.0.0}
@@ -1407,6 +1367,9 @@ packages:
 
   glur@2.0.0:
     resolution: {integrity: sha512-ZgJCXwuaQo4vnYG+VqtNIYV9kpNC/V/mafp0UcOMiLN/7eQVjCU+RDBLIwWXlmvwYMLFDf0IJrV/4qnM5VinCA==}
+
+  harfbuzzjs@0.10.3:
+    resolution: {integrity: sha512-GJnLUrgLMadlMYrBGEXwYEimObbysy3prWT4HyPpFQERvgTU/OZ+ReUlEPOum6w4RBtFXzXiCCmECOr4sz3qwQ==}
 
   internmap@2.0.3:
     resolution: {integrity: sha512-5Hh7Y1wQbvY5ooGgPbDaL5iYLAPzMTUrjMulskHLH6wnv/A+1q5rgEaiuqEjB+oxGXIVZs1FF+R/KPN3ZSQYYg==}
@@ -1540,6 +1503,13 @@ packages:
     engines: {node: '>= 8.0.0'}
     hasBin: true
 
+  p-limit@3.1.0:
+    resolution: {integrity: sha512-TYOanM3wGwNGsZN2cVTYPArw454xnXj5qmWF1bEoAc4+cU/ol7GVh7odevjp1FNHduHc3KZMcFduxU5Xc6uJRQ==}
+    engines: {node: '>=10'}
+
+  pako@1.0.11:
+    resolution: {integrity: sha512-4hLB8Py4zZce5s4yd9XzopqwVv/yGNhV1Bl8NTmCq1763HeK2+EwVTv+leGeL13Dnh2wfbqowVPXCIO0z4taYw==}
+
   path-expression-matcher@1.6.2:
     resolution: {integrity: sha512-enSlaiat05iasnzmgNxRj8reFdj3puY2QpNgP1aPIaVfT6nn9ICuPoFlKHk8EN22HcwewshO+mN2DGbkCEOtqQ==}
     engines: {node: '>=14.0.0'}
@@ -1584,6 +1554,9 @@ packages:
 
   strnum@2.4.1:
     resolution: {integrity: sha512-M9eUSMT2dCB2cTNPG7UYj6KuK7RJR2SN2+yCV/fTW3xzTCS6EaGZ5pSMgDIjB7r8zSfTGk+dvvn9rTjpVS9Mwg==}
+
+  subset-font@2.7.0:
+    resolution: {integrity: sha512-KoBEshkhodCspvR8DweQFkxRB0OxLmXiWV49y8O5fksD9gf/qBK8gcLwUOlGP4ktm55t2Ot0gLRsVQLT4391QQ==}
 
   three-mesh-bvh@0.7.8:
     resolution: {integrity: sha512-BGEZTOIC14U0XIRw3tO4jY7IjP7n7v24nv9JXS1CyeVRWOCkcOMhRnmENUjuV39gktAw4Ofhr0OvIAiTspQrrw==}
@@ -1689,9 +1662,20 @@ packages:
       yaml:
         optional: true
 
+  wawoff2@2.0.1:
+    resolution: {integrity: sha512-r0CEmvpH63r4T15ebFqeOjGqU4+EgTx4I510NtK35EMciSdcTxCw3Byy3JnBonz7iyIFZ0AbVo0bbFpEVuhCYA==}
+    hasBin: true
+
+  woff2sfnt-sfnt2woff@1.0.0:
+    resolution: {integrity: sha512-edK4COc1c1EpRfMqCZO1xJOvdUtM5dbVb9iz97rScvnTevqEB3GllnLWCmMVp1MfQBdF1DFg/11I0rSyAdS4qQ==}
+
   xml-naming@0.3.0:
     resolution: {integrity: sha512-ghig2TBE/H11aOVgmahA3MhimvkBr6JIYknH/Dhdk10nXwdbIqBJsbfMxpvFPG8bAw77gN29aQWvKpmVoPlvPQ==}
     engines: {node: '>=16.0.0'}
+
+  yocto-queue@0.1.0:
+    resolution: {integrity: sha512-rVksvsnNCdJ/ohGc6xgPwyN8eheCxsiLM8mxuE/t/mOVqJewPuO1miLpTHQiRgTKCLexL4MeAFVagts7HmNZ2Q==}
+    engines: {node: '>=10'}
 
 snapshots:
 
@@ -2165,6 +2149,8 @@ snapshots:
 
   anynum@1.0.1: {}
 
+  argparse@2.0.1: {}
+
   commander@13.1.0: {}
 
   convert-source-map@2.0.0: {}
@@ -2288,10 +2274,17 @@ snapshots:
 
   fflate@0.8.3: {}
 
+  fontverter@2.0.0:
+    dependencies:
+      wawoff2: 2.0.1
+      woff2sfnt-sfnt2woff: 1.0.0
+
   fsevents@2.3.3:
     optional: true
 
   glur@2.0.0: {}
+
+  harfbuzzjs@0.10.3: {}
 
   internmap@2.0.3: {}
 
@@ -2410,6 +2403,12 @@ snapshots:
       string.prototype.codepointat: 0.2.1
       tiny-inflate: 1.0.3
 
+  p-limit@3.1.0:
+    dependencies:
+      yocto-queue: 0.1.0
+
+  pako@1.0.11: {}
+
   path-expression-matcher@1.6.2: {}
 
   pica@10.0.2:
@@ -2501,6 +2500,12 @@ snapshots:
     dependencies:
       anynum: 1.0.1
 
+  subset-font@2.7.0:
+    dependencies:
+      fontverter: 2.0.0
+      harfbuzzjs: 0.10.3
+      p-limit: 3.1.0
+
   three-mesh-bvh@0.7.8(three@0.169.0):
     dependencies:
       three: 0.169.0
@@ -2549,4 +2554,14 @@ snapshots:
       fsevents: 2.3.3
       lightningcss: 1.33.0
 
+  wawoff2@2.0.1:
+    dependencies:
+      argparse: 2.0.1
+
+  woff2sfnt-sfnt2woff@1.0.0:
+    dependencies:
+      pako: 1.0.11
+
   xml-naming@0.3.0: {}
+
+  yocto-queue@0.1.0: {}

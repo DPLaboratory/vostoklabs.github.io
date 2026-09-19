@@ -44,12 +44,15 @@ export interface AppShell {
   rightScroll: HTMLElement;
 }
 
-function panel(side: 'left' | 'right', opts: PanelOptions): { panel: HTMLElement; scroll: HTMLElement } {
-  const scroll = el('div', { className: 'vl-panel__scroll' }, [
-    ...(opts.header ?? []),
-    ...(opts.scroll ?? []),
-  ]);
+export function panel(side: 'left' | 'right', opts: PanelOptions): { panel: HTMLElement; scroll: HTMLElement } {
+  const scroll = el('div', { className: 'vl-panel__scroll' }, opts.scroll ?? []);
   const children: (HTMLElement | Node)[] = [scroll];
+  /* Pinned ABOVE the scroll, as the doc comment on `header` has always said — it used to be
+     the first thing INSIDE it, which is a different thing entirely: it scrolled away with
+     everything else. Nothing was passing `header` when this was fixed, so nothing moved; the
+     first caller is the carabiner's undo/redo bar, which is useless the moment it scrolls out
+     of reach (the panel is three screens tall, and undo is wanted from the bottom of it). */
+  if (opts.header?.length) children.unshift(el('div', { className: 'vl-panel__header' }, opts.header));
   if (opts.credit) children.push(opts.credit);
   if (opts.footer?.length) children.push(el('div', { className: 'vl-panel__footer' }, opts.footer));
   const p = el('div', { className: `vl-panel vl-panel--${side}` }, children);

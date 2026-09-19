@@ -140,6 +140,48 @@ export function slider(opts: BareSliderOptions): SliderHandle {
   return node;
 }
 
+/* ---------------- The recommended value ---------------- */
+
+/**
+ * The small "↺ 3.2 mm" button that appears beside a caption once the row is showing
+ * something other than what it shipped with.
+ *
+ * It exists because "Reset to defaults" is the wrong grain. A tester moved the carabiner's
+ * bar width, decided he preferred the old one, and had no way back that did not also throw
+ * away the shape, the chain and the colours he had spent ten minutes on — and, worse, no way
+ * to even SEE what the advised number had been. A global reset answers "start again"; this
+ * answers "what was it, and put that one back", which is the question people actually ask.
+ *
+ * So it is a readout first and a control second: the number is on the button, visible without
+ * pressing anything. Hidden while the value matches, because a marker that is always there
+ * marks nothing.
+ */
+function defaultMark(
+  value: number | undefined,
+  fmt: (v: number) => string,
+  label: string,
+  apply: (v: number) => void,
+): { node: HTMLElement | null; sync(current: number): void } {
+  if (value === undefined) return { node: null, sync() {} };
+  const text = fmt(value);
+  const btn = el('button', {
+    className: 'vl-default-mark',
+    attrs: {
+      type: 'button',
+      title: `Put ${label} back to the recommended ${text}`,
+      'aria-label': `Put ${label} back to the recommended ${text}`,
+    },
+  }, [svgEl(ICONS.rotateLeft), el('span', { text })]) as HTMLButtonElement;
+  btn.hidden = true;
+  btn.addEventListener('click', () => apply(value));
+  return {
+    node: btn,
+    sync(current) {
+      btn.hidden = Math.abs(current - value) < 1e-9;
+    },
+  };
+}
+
 /* ---------------- Slider row ---------------- */
 
 export interface SliderOptions {
@@ -177,6 +219,12 @@ export interface SliderOptions {
    * raw string still has the fraction in it.
    */
   parse?: (typed: number, raw: string) => number;
+  /**
+   * What the app shipped with. Set it and the caption grows a "↺ 3.2 mm" button whenever the
+   * row is showing anything else — see `defaultMark`. Omit it and the row is exactly what it
+   * was, with no extra element.
+   */
+  defaultValue?: number;
 }
 
 /** The FIRST number in the box, not every digit in it run together.
@@ -296,8 +344,14 @@ export function sliderRow(opts: SliderOptions): SliderRowHandle {
     if (syncRange) range.value = String(current);
     showValue(fmt(current));
     paintFill();
+    mark.sync(current);
     if (notify) opts.onInput?.(current);
   };
+
+  const mark = defaultMark(opts.defaultValue, fmt, opts.label, (v) => {
+    commit(v);
+    opts.onCommit?.(v);
+  });
 
   range.addEventListener('input', () => commit(Number(range.value), false));
   // `change` on a range fires once, when the drag ends — which is exactly the "user has decided"
@@ -314,10 +368,11 @@ export function sliderRow(opts: SliderOptions): SliderRowHandle {
   const labelEl = el('label', { text: opts.label });
   if (opts.help) labelEl.append(helpTip(opts.help));
 
-  const row = el('div', { className: 'vl-slider-row' }, [
-    el('div', { className: 'vl-slider-head' }, [labelEl, valFit]),
-    range,
-  ]) as unknown as ValueRow<number>;
+  const head = el('div', { className: 'vl-slider-head' }, [labelEl]);
+  if (mark.node) head.append(mark.node);
+  head.append(valFit);
+
+  const row = el('div', { className: 'vl-slider-row' }, [head, range]) as unknown as ValueRow<number>;
   /*
     A programmatic set must not clobber what someone is currently typing.
 
@@ -333,6 +388,7 @@ export function sliderRow(opts: SliderOptions): SliderRowHandle {
     range.value = String(current);
     if (!typing) showValue(fmt(current));
     paintFill();
+    mark.sync(current);
     if (notify) opts.onInput?.(current);
   };
   withAccess(row, () => current, [range, valBox]);
@@ -349,6 +405,7 @@ export function sliderRow(opts: SliderOptions): SliderRowHandle {
     commit(current, true, false);
   };
   paintFill();
+  mark.sync(current);
   return handle;
 }
 
@@ -371,6 +428,8 @@ export interface StepperRowOptions {
   unit?: string;
   /** Turn what the user typed into the stored value. See `SliderOptions.parse`. */
   parse?: (typed: number, raw: string) => number;
+  /** What the app shipped with. See `SliderOptions.defaultValue`. */
+  defaultValue?: number;
   /**
    * Render the pair as left/right arrows instead of −/+, for a value that IS a direction
    * rather than a count — the keychain's fine offset moves a point left or right along an
@@ -423,6 +482,8 @@ export function stepperRow(opts: StepperRowOptions): ValueRow<number> {
     plus.textContent = '+';
   }
 
+  const mark = defaultMark(opts.defaultValue, fmt, opts.label, (v) => commit(v));
+
   const commit = (v: number, notify = true) => {
     current = snap(v);
     showValue(fmt(current));
@@ -430,6 +491,7 @@ export function stepperRow(opts: StepperRowOptions): ValueRow<number> {
     // nothing reads as the control being broken.
     minus.disabled = current <= opts.min + 1e-9;
     plus.disabled = current >= opts.max - 1e-9;
+    mark.sync(current);
     if (notify) opts.onInput?.(current);
   };
 
@@ -447,8 +509,10 @@ export function stepperRow(opts: StepperRowOptions): ValueRow<number> {
 
   // `.vl-slider-row` for the outer column, because the caption/control rhythm is the same
   // one and a second name for it would drift.
+  const head = el('div', { className: 'vl-slider-head' }, [labelEl]);
+  if (mark.node) head.append(mark.node);
   const row = el('div', { className: 'vl-slider-row' }, [
-    el('div', { className: 'vl-slider-head' }, [labelEl]),
+    head,
     el('div', { className: 'vl-stepper-bar' }, [minus, valFit, plus]),
   ]) as unknown as ValueRow<number>;
 
@@ -468,6 +532,7 @@ export function stepperRow(opts: StepperRowOptions): ValueRow<number> {
     current = snap(value);
     if (!typing) showValue(fmt(current));
     paintBounds();
+    mark.sync(current);
     if (notify) opts.onInput?.(current);
   };
   row.getValue = () => current;
@@ -686,7 +751,8 @@ export function segmentedControl<T extends string = string>(
 
 export interface SelectFieldOptions {
   label: string;
-  options: { value: string; label: string }[];
+  /** `group` puts the option under a native `<optgroup>` of that name. */
+  options: { value: string; label: string; group?: string }[];
   value?: string;
   onChange?: (value: string) => void;
   /** Optional "?" tooltip shown next to the label. */
@@ -696,10 +762,23 @@ export interface SelectFieldOptions {
 /** Labelled dropdown, styled to match the app's fields. */
 export function selectField(opts: SelectFieldOptions): ValueRow<string> {
   const select = el('select');
+  /* A `group` on an option puts it under a native `<optgroup>`. Consecutive options sharing a
+     group share one heading, so the caller states the grouping in the same list it already
+     writes rather than in a second, parallel structure — and a list with no groups renders
+     exactly as it did before. */
+  const groups = new Map<string, HTMLElement>();
   for (const o of opts.options) {
     const option = el('option', { text: o.label, attrs: { value: o.value } });
     if (o.value === opts.value) option.selected = true;
-    select.append(option);
+    if (o.group) {
+      let g = groups.get(o.group);
+      if (!g) {
+        g = el('optgroup', { attrs: { label: o.group } });
+        groups.set(o.group, g);
+        select.append(g);
+      }
+      g.append(option);
+    } else select.append(option);
   }
   select.addEventListener('change', () => opts.onChange?.(select.value));
 

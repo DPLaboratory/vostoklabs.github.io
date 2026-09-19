@@ -191,6 +191,20 @@ export interface ThumbTileOptions {
    * image files at all — they are ring generators — so `src` cannot express them.
    */
   svgPath?: string;
+  /**
+   * Rendered INSTEAD of an image: a tile whose thumbnail is TYPE.
+   *
+   * A font picker is the case this exists for, and it is the third one in the product — the
+   * keychain's, the magnet generator's, and now the fold-up box's logo. All three want the
+   * same thing and none of them could ask for it: a grid of font NAMES tells you nothing
+   * about what your own word will look like, so each hand-rolled a `<div>` of text with a
+   * click listener, which is not focusable and announces as nothing.
+   *
+   * `fontFamily` is the face to draw it in — pass `fontFamilyFor(id)` from `@vostok/fonts`.
+   * Set through the CSSOM rather than a `style` attribute, which a host CSP can forbid.
+   */
+  text?: string;
+  fontFamily?: string;
   /** The tile's whole accessible name; also its tooltip. */
   label: string;
   /** Renders as the current choice, and reports it as `aria-pressed`. */
@@ -200,7 +214,12 @@ export interface ThumbTileOptions {
   onClick?: (tile: ThumbTileHandle) => void;
 }
 
-export type ThumbTileHandle = HTMLButtonElement & { setSelected(on: boolean): void };
+export type ThumbTileHandle = HTMLButtonElement & {
+  setSelected(on: boolean): void;
+  /** Swap the previewed text. A font picker re-renders every tile as the user types, and
+   *  rebuilding the grid instead would take the focus ring with it. */
+  setText(text: string): void;
+};
 
 /**
  * One focusable image tile.
@@ -225,13 +244,21 @@ export function thumbTile(opts: ThumbTileOptions): ThumbTileHandle {
   // "pressed". A tile that reports a state it does not have is worse than one that reports
   // nothing.
   if (opts.selected !== undefined) btn.setAttribute('aria-pressed', String(opts.selected));
+  let textNode: HTMLElement | null = null;
   if (opts.svgPath) btn.append(svgPathEl(opts.svgPath));
   else if (opts.src) {
     btn.append(el('img', { attrs: { src: opts.src, alt: '', decoding: 'async', loading: 'lazy' } }));
+  } else if (opts.text !== undefined) {
+    textNode = el('span', { className: 'vl-thumb__text', text: opts.text });
+    if (opts.fontFamily) textNode.style.fontFamily = opts.fontFamily;
+    btn.append(textNode);
   }
   // `aria-pressed` is both the announcement and what the stylesheet keys the chosen look off,
   // so the two cannot disagree — the same arrangement `chip()` uses.
   btn.setSelected = (on) => btn.setAttribute('aria-pressed', String(on));
+  btn.setText = (text) => {
+    if (textNode) textNode.textContent = text;
+  };
   if (opts.onClick) btn.addEventListener('click', () => opts.onClick!(btn));
   return btn;
 }
@@ -242,6 +269,12 @@ export interface ThumbGridOptions {
   tiles: HTMLElement[];
   /** Smallest tile width before the grid drops a column, in px. Default 64. */
   minPx?: number;
+  /**
+   * Tile shape, as `aspect-ratio`. Default 1 — square, which is right for a picture and
+   * wrong for a word: a font tile showing "Hello" in a square box is mostly empty box.
+   * `'auto'` lets the content set the height.
+   */
+  aspect?: number | 'auto';
 }
 
 /**
@@ -263,6 +296,7 @@ export function thumbGrid(opts: ThumbGridOptions): HTMLElement {
   if (opts.heading) wrap.append(el('span', { className: 'vl-samples__heading', text: opts.heading }));
   const grid = el('div', { className: 'vl-thumb-grid' }, opts.tiles);
   if (opts.minPx) grid.style.setProperty('--thumb-min', `${opts.minPx}px`);
+  if (opts.aspect !== undefined) grid.style.setProperty('--thumb-aspect', String(opts.aspect));
   wrap.append(grid);
   return wrap;
 }
@@ -302,3 +336,4 @@ export function sampleGrid(opts: SampleGridOptions): SampleGridHandle {
   };
   return wrap;
 }
+

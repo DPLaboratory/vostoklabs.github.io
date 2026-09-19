@@ -32,6 +32,19 @@
 .vl-panel--left { border-right: 1px solid var(--line); }
 .vl-panel--right { border-left: 1px solid var(--line); }
 
+/* Pinned header at the top of a panel — the mirror of the footer below. For the handful of
+   controls that act on the panel as a whole (undo, redo, reset) and so must not scroll out
+   from under the settings they undo. */
+.vl-panel__header {
+  flex: 0 0 auto;
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
 /* The scrolling content area of a panel — thin scrollbar (the shared look). */
 .vl-panel__scroll {
   flex: 1 1 auto;

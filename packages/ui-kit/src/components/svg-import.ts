@@ -42,7 +42,7 @@
  */
 import { el } from '../dom';
 import { colorSwatch, segmentedControl } from './controls';
-import { dialog } from './dialog';
+import { splitDialog } from './split-dialog';
 
 const NS = 'http://www.w3.org/2000/svg';
 
@@ -184,10 +184,11 @@ export function openSvgImport(
     const anyFilled = parts.some((p) => p.kind === 'fill' && !p.why);
     const choices: Record<number, SvgImportChoice> = {};
 
-    const body = el('div', { className: 'vl-svgprev' });
+    // The two panes are the split dialog's own now — the grid that used to hold them is
+    // `.vl-split`. Everything INSIDE them is untouched, which is the point: three apps ship
+    // this window, and promoting the shell must not move a pixel of the content.
     const left = el('div', { className: 'vl-svgprev__pane' });
     const right = el('div', { className: 'vl-svgprev__pane' });
-    body.append(left, right);
 
     const panels = el('div', { className: 'vl-svgprev__panels' });
     const srcPanel = el('div', { className: 'vl-svgprev__panel' });
@@ -292,12 +293,18 @@ export function openSvgImport(
       resolve(result);
     };
 
-    dialog({
+    splitDialog({
       title: `Import ${opts.name}`,
-      content: body,
+      stage: left,
+      controls: right,
       // A working surface rather than a form — see the note on `size` in dialog.ts. `wide`
       // (760px) is sized for a grid beside a preview; this is two panes of decisions.
       size: 'xl',
+      // The numbers that keep this window exactly the width it was: the parts list is a
+      // column of decisions, not a sidebar of sliders, and its three-option picker alone is
+      // 230px. The preview panels set their own height, so the stage needs no floor.
+      controlsWidth: 490,
+      stageMinHeight: 0,
       onClose: () => finish(null),
       actions: [
         { label: 'Cancel', onClick: () => { finish(null); } },
