@@ -92,6 +92,12 @@ jobs:
       - name: Copy Fold-Up Box Generator to Hub Dist
         run: cp -r apps/foldbox/dist apps/hub/dist/foldbox
 
+      - name: Build Keychain Carabiner Set
+        run: pnpm build:keychainCarabiner
+
+      - name: Copy Keychain Carabiner Set to Hub Dist
+        run: cp -r apps/keychain-carabiner/dist apps/hub/dist/keychain-carabiner
+
       # Every generator the hub links to has to exist under the path generators.json gives it,
       # or the card is a 404 — which is exactly what shipped: the app was written, the registry
       # entry was added, and nothing here ever built it. Cheap to assert, and it fails the

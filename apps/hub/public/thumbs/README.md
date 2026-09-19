@@ -9,7 +9,8 @@ styled letter placeholder, so a new tool can ship its card before its photo.
 
 Present:
 
-- `clicker.png`, `keycap.png`, `magnet.png`, `name-keychain.png`
+- `clicker.png`, `keycap.png`, `magnet.png`, `name-keychain.png`, `keychain-carabiner.png`
+  (a render from `scripts/render-carabiner.mjs`, until there is a photo)
 - `large-box.png`, `rugged-box.png`, `washer-spacer.png`, `headphone-hook.png`,
   `edge-mount-dock.png`, `powerstrip-holder.png`
 

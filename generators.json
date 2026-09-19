@@ -60,6 +60,14 @@
       "blurb": "Set the size, pick a structure, print it flat as one thin grooved sheet — then fold it into a box. Four glue-free mailers and trays, with a live fold animation before you commit."
     },
     {
+      "id": "keychain-carabiner",
+      "name": "Keychain Carabiner Set",
+      "route": "app",
+      "status": "live",
+      "appUrl": "/keychain-carabiner/",
+      "blurb": "A snap-hook clip and a chain to hang your keys or a fidget on. Every part in any shape, a symbol you drag onto the clip, an optional charm — printed flat in one job, or a chain that prints already linked."
+    },
+    {
       "id": "large-box",
       "name": "Large Customizable Box",
       "route": "mw",

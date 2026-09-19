@@ -124,3 +124,6 @@ apps/foldbox/README.internal.md
 # Bambu Studio CLI slicing output, dropped in the repo root by whatever ran last.
 result.json
 
+
+# Keychain carabiner headless render output (scripts/render-carabiner.mjs)
+.render-carabiner/
