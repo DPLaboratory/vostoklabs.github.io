@@ -27,7 +27,7 @@ import { MIN_COUNTER, textLayer } from '../engine/text';
 import type { BuildInput, DesignLayer, KeyringSpec } from '../engine/types';
 import { hangHoleFields, NO_KEYRING } from './keyring';
 import { connectSpec, countersTooTight, letterScoreField, stem } from './shared';
-import { lines, num, str, type Field, type TemplateDef } from './types';
+import { bool, lines, num, str, type Field, type TemplateDef } from './types';
 
 /** The em every name is measured at. Big enough that the weld's overlap is already the 3 %-of-
  *  size branch of `weldOverlap`, so a measured width scales linearly with the size — which is
@@ -167,11 +167,33 @@ export const familyTreeNames: TemplateDef = {
     // ------------------------------------------------------------------ LEFT: Font --
     { kind: 'font', key: 'font', label: 'Font', section: 'Font', value: 'anton', recommended: BOLD_SANS },
 
+    // A branch under each name, joining it to the next (Ian, 2026-09-22: "each line of text
+    // shoul havea line underneath so its easier to connect it all"). It is the sure way this
+    // design holds together: the weld between two rows depends on where their letters happen
+    // to fall, and a bar does not depend on anything — every row meets the one below it across
+    // its whole width. On by default, because the piece it makes is stronger AND reads as a
+    // tree rather than a stack of words.
+    { kind: 'toggle', key: 'rowLines', label: 'Line under each name', section: 'Tree', value: true },
+    {
+      kind: 'number', key: 'rowLine', label: 'Line thickness', section: 'Tree',
+      value: 2.5, min: 1, max: 6, step: 0.5, unit: 'mm',
+      visibleWhen: (v) => bool(v, 'rowLines'),
+      help: 'Thin lines snap; keep it near the material thickness.',
+    },
+
     // ----------------------------------------------------- long tail → More options --
     {
       kind: 'number', key: 'overlap', label: 'Row overlap', value: 1.5, min: 0.5, max: 4, step: 0.1, unit: 'mm',
       advanced: true,
       help: 'How far each name bites into the one below it.',
+    },
+    // The same control, the same units, as every other design that sets type: a share of the
+    // letter height, so it survives a size change.
+    {
+      kind: 'number', key: 'letterSpacing', label: 'Letter spacing', value: 0, min: -0.1, max: 0.3, step: 0.02,
+      advanced: true,
+      format: (n) => `${n > 0 ? '+' : ''}${Math.round(n * 100)}%`,
+      help: 'Air between the letters, as a share of their height.',
     },
     { ...letterScoreField('More options', 'score'), advanced: true },
     {
@@ -214,7 +236,7 @@ export const familyTreeNames: TemplateDef = {
     // — one stem over a gap between two letters — and the engine has to invent a joining bar.
     // Measured on the default names before this line existed: 3 bars, and a warning.
     const draw = async (text: string, size: number, id: string, label: string): Promise<DesignLayer | null> => {
-      const [layer] = await textLayer({ symbols, text: text.toUpperCase(), font, size, connect: connectSpec(font, size) }, 'off', id, label);
+      const [layer] = await textLayer({ symbols, text: text.toUpperCase(), font, size, letterSpacing: num(v, 'letterSpacing'), connect: connectSpec(font, size) }, 'off', id, label);
       return layer ?? null;
     };
     /** A drawn line with the extents that MATTER: the ink plus the thicken the engine will add. */
@@ -351,7 +373,39 @@ export const familyTreeNames: TemplateDef = {
       warnings.push(`The smallest letters are ${mm(smallest)} mm — raise Tree → Width, or use fewer names.`);
     }
 
-    const material: DesignLayer[] = stack.map((r) => ({ ...r.layer, op: 'off' as const, hugOnly: true }));
+    /* The branch under each name.
+     *
+     * A bar as wide as the row, sitting on its baseline and reaching down into the row below.
+     * It spans the WHOLE width, so wherever the two rows have ink it has ink too — which is the
+     * point: the weld between two names depends on where their letters happen to line up, and
+     * this does not depend on anything. `welded` is measured after these are in, so a tree with
+     * bars stops reporting bridges it no longer needs.
+     *
+     * Not under the LAST row: there is nothing below it to reach, and a bar hanging off the
+     * bottom of the piece is a tab, not a branch. */
+    const bars: DesignLayer[] = [];
+    if (bool(v, 'rowLines') && stack.length > 1) {
+      const t = Math.max(0.6, num(v, 'rowLine'));
+      for (let i = 0; i < stack.length - 1; i++) {
+        const r = stack[i]!;
+        // The row's OWN width. Widening it to the row below — so the bar shows as a branch
+        // sticking out past the shorter name — was tried and is worse: at this row overlap the
+        // band between two names is already nearly closed, and a full-width bar across it turns
+        // the tree into a slab with the letters reduced to counters. The bar's job here is the
+        // weld, and it does that invisibly, which is the right trade at this overlap. Making it
+        // SHOW would mean separating the rows and letting the bar be the only thing joining
+        // them — a different design, and Ian's call to make.
+        const w = r.width / 2;
+        const topY = r.bottom + pen / 2;
+        const botY = r.bottom - t;
+        bars.push({
+          id: `bar-${i}`, label: 'Branch', op: 'off', hugOnly: true,
+          shapes: [[[[-w, botY], [w, botY], [w, topY], [-w, topY]]]],
+        });
+      }
+    }
+
+    const material: DesignLayer[] = [...stack.map((r) => ({ ...r.layer, op: 'off' as const, hugOnly: true })), ...bars];
     // The seams are a second copy of the SAME islands, scored: the engine burns the run of each
     // letter's edge that the next letter covers, and nothing else (G33). One layer per row, so
     // each keeps its own row's thicken — a shared layer could only carry one.

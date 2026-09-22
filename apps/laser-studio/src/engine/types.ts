@@ -52,7 +52,13 @@ export interface DesignLayer {
    *  Set by `textLayer` / `arcTextLayer` / `stackedText` (`text`), `symbolLayer` (`symbol`) and
    *  `blankDetailLayers` (`detail`). Absent means "not lettering", so a template that builds a
    *  DesignLayer by hand opts INTO the net rather than out of it. */
-  kind?: 'text' | 'symbol' | 'rule' | 'detail' | 'guide';
+  /** What this layer IS, where the engine has to treat one differently from another.
+   *
+   *  `fill` is a pattern that covers the piece: it is MEANT to reach the edge, so the engine's
+   *  "ran past the edge" warning — which exists for a name coming out "RINCESS BUTTERC" — does
+   *  not apply to it. Everything else about the clip is unchanged; only the complaint is
+   *  dropped. */
+  kind?: 'text' | 'symbol' | 'rule' | 'detail' | 'guide' | 'fill';
   /** OPEN polylines beside `shapes` — the lines of a pattern fill, a hinge's slits. A score
    *  layer clips them to the part and hands them on as open runs; an engrave or cut layer
    *  ignores them (a fill has no line to fill, a cut takes closed slots — see

@@ -646,7 +646,8 @@ function buildPiece(wasm: any, piece: PieceSpec): PieceResult {
         // that ran off the part. Pure arithmetic, so what it measures is what was really lost.
         const gauge = holey ? clipShapesToLines(l.shapes, fillHoles(region)) : clipped;
         const whole = lineLength(l.shapes);
-        if (whole > 1e-6) lost(warnings, l.label, 1 - lineLength(gauge.shapes, gauge.paths) / whole);
+        // A `fill` is a pattern covering the piece: being trimmed at the edge is the design.
+        if (whole > 1e-6 && l.kind !== 'fill') lost(warnings, l.label, 1 - lineLength(gauge.shapes, gauge.paths) / whole);
       }
       objects.push({ id: l.id, label: l.label, op: 'score', shapes: clipped.shapes, ...(clipped.paths.length ? { paths: clipped.paths } : {}) });
       designBox = unionBox(designBox, bboxOf(clipped.paths.length ? [...clipped.shapes, clipped.paths] : clipped.shapes));
@@ -657,7 +658,7 @@ function buildPiece(wasm: any, piece: PieceSpec): PieceResult {
       warnings.push(`${l.label} lies outside the part.`);
       continue;
     }
-    if (boundToBody) lost(warnings, l.label, shareOutside(wasm, l.shapes, solidPlate));
+    if (boundToBody && l.kind !== 'fill') lost(warnings, l.label, shareOutside(wasm, l.shapes, solidPlate));
     objects.push({ id: l.id, label: l.label, op: l.op, shapes });
     // What is left after the clip, not what was asked for: a name that runs past the edge used
     // to inflate the reported size to 80 × 93 mm on a 68 × 40 mm tag, and the preview zoomed out

@@ -11,14 +11,15 @@
 // dropped into a slotted base (`engine/stands.ts`'s `slotBase`) is gone; the reference is
 // `ref/REF-phone-stand-cross-pieces-80x130.png`.
 import { bboxOf, placeShapes, type Box, type Shapes } from '@vostok/laser';
+import { fillShape, patternById, type PatternDef, type PatternOp } from '@vostok/patterns';
 import type { CutRing } from '@vostok/export';
 import { crossStandGeometry, crossStandPieces } from '../engine/cross-stand';
 import { fitBoxInside } from '../engine/editorGeometry';
 import { symbolLayer, textLayer } from '../engine/text';
 import type { DesignLayer, KeyringSpec } from '../engine/types';
 import { readSymbols } from '../symbols/model';
-import { stem } from './shared';
-import { num, str, type TemplateDef, type Values } from './types';
+import { keepOff, stem } from './shared';
+import { bool, num, str, type TemplateDef, type Values } from './types';
 
 /** Fit → joint clearance, mm. The same three names and numbers the QR stands use (`qr-shared`
  *  FIT): Tight is nominal, Snug a thumb-press, Easy forgives a sheet that varies. Declared here
@@ -34,6 +35,42 @@ const noRing = (): KeyringSpec => ({ enabled: false, mode: 'outside', side: 'top
 
 /** Engraved caps under this break up in a thin face (the house floor). */
 const MIN_CAP = 4.5;
+
+/* ------------------------------------------------------------------------- the pattern --
+
+   WHERE it goes is the part worth deciding rather than defaulting to, so: the BACK piece's
+   panel, above the slot.
+
+   That is the one big continuous face this object has — about 80 × 105 at the default, against
+   a lip of 80 × 20 — and it is the face you look at. The back piece rises at the lean; with no
+   phone docked it IS the object, and with one docked its top still shows above the screen. The
+   front piece cannot take it: its long arm runs down and back underneath the phone where
+   nothing is visible, and its short arm is the lip, which the phone's own bottom edge sits on
+   and hides. So the pattern goes on the panel and the name stays on the lip — each where it can
+   be seen.
+
+   The region is the PIECE ITSELF — its outline, with the slot punched out of it as a hole. Not
+   a box on it: a rectangle inside the content box left a wide blank border and a dead area
+   below the slot, and read as a panel stuck onto the face rather than as the face (Ian,
+   2026-09-22: "make it so the pattern covering whole front face, completely").
+
+   Cutting is offered, not just scoring: a pierced back panel is the thing people buy these for.
+   The engine's own `web` keeps every hole off the outline and off the slot, and this panel
+   carries no load a pierced field threatens — it leans against the prop, it does not span. */
+const DEFAULT_PATTERN = 'pm-japanese-pattern-4';
+const FALLBACK_PATTERN = 'honeycomb';
+/** How much material the pattern leaves round the SLOT — the one place on this piece that has to
+ *  stay solid, because the other piece grips it there. */
+const SLOT_KEEP = 3;
+/** What an operation is called in a sentence. */
+const OP_WORD: Record<PatternOp, string> = { cut: 'cut out', engrave: 'engraved', score: 'scored' };
+
+let libraryLoaded: Promise<PatternDef[]> | null = null;
+async function libraryPattern(id: string): Promise<PatternDef | undefined> {
+  libraryLoaded ??= import('@vostok/patterns/library').then((m) => m.LIBRARY);
+  const lib = await libraryLoaded;
+  return lib.find((d) => d.id === id) ?? lib[0];
+}
 
 /**
  * The lean, in degrees from the TABLE.
@@ -53,6 +90,7 @@ const boxOf = (layers: DesignLayer[]) => bboxOf(layers.flatMap((l) => l.shapes))
 const centreOf = (b: Box): Pt => [(b.minX + b.maxX) / 2, (b.minY + b.maxY) / 2];
 const rectShapes = (b: Box): Shapes => [[[[b.minX, b.minY], [b.maxX, b.minY], [b.maxX, b.maxY], [b.minX, b.maxY]] as CutRing]];
 
+
 const move = (layers: DesignLayer[], dx: number, dy: number): DesignLayer[] =>
   Math.abs(dx) < 1e-9 && Math.abs(dy) < 1e-9 ? layers : layers.map((l) => ({ ...l, shapes: placeShapes(l.shapes, dx, dy, 0) }));
 
@@ -68,10 +106,32 @@ export const phoneStand: TemplateDef = {
   fields: [
     // ---------------------------------------------------------- RIGHT: what you type --
     {
-      kind: 'text', key: 'text', label: 'Name', panel: 'right', section: 'Text', value: 'Elsie',
+      // Empty by default (Ian, 2026-09-22): the stand's decoration is the pattern now, and a
+      // name is something you add rather than something you have to clear.
+      kind: 'text', key: 'text', label: 'Name', panel: 'right', section: 'Text', value: '',
       placeholder: 'A name, a word…', maxLength: 18, help: 'Engraved on the front piece, under the phone.',
     },
     { kind: 'symbol', key: 'symbol', label: 'Symbol', panel: 'right', section: 'Text', value: '', help: 'Optional, above the name.' },
+
+    // -------------------------------------------------------- LEFT: the back panel --
+    { kind: 'toggle', key: 'pattern', label: 'Pattern on the panel', section: 'Pattern', value: true, help: 'Fills the big face the phone leans on.' },
+    {
+      kind: 'pattern', key: 'patternId', label: 'Pattern', section: 'Pattern', value: DEFAULT_PATTERN,
+      visibleWhen: (v) => bool(v, 'pattern'),
+    },
+    { kind: 'number', key: 'patternScale', label: 'Zoom', section: 'Pattern', value: 100, min: 40, max: 300, step: 5, unit: '%', visibleWhen: (v) => bool(v, 'pattern') },
+    { kind: 'number', key: 'patternAngle', label: 'Angle', section: 'Pattern', value: 0, min: 0, max: 180, step: 5, unit: '°', visibleWhen: (v) => bool(v, 'pattern') },
+    {
+      kind: 'select', key: 'patternOp', label: 'Make it', section: 'Pattern', value: 'score',
+      options: [{ value: 'cut', label: 'Cut out' }, { value: 'engrave', label: 'Engrave' }, { value: 'score', label: 'Score' }],
+      help: 'Line patterns can only be scored or engraved.',
+      visibleWhen: (v) => bool(v, 'pattern'),
+    },
+    {
+      kind: 'number', key: 'patternWeb', label: 'Web', section: 'Pattern', value: 2.5, min: 1, max: 8, step: 0.1, unit: 'mm',
+      help: 'The least material left between two holes, or between a hole and an edge.',
+      visibleWhen: (v) => bool(v, 'pattern') && str(v, 'patternOp') === 'cut',
+    },
     {
       kind: 'font', key: 'font', label: 'Font', section: 'Font', value: 'montserrat',
       // Engraved small on the lip and read across a desk: clean sans with open counters, and two
@@ -152,12 +212,97 @@ export const phoneStand: TemplateDef = {
       if (fit < 0.999) block = scaleAbout(block, Math.max(0.05, fit), centre);
     }
 
+    // -------------------------------------------------- the pattern, on the back panel --
+    const backLayers: DesignLayer[] = [];
+    const patternWarnings: string[] = [];
+    let patternKeepOut: Box | null = null;
+    if (bool(v, 'pattern')) {
+      /* The region is the PIECE, not a box on it (Ian, 2026-09-22: "make it so the pattern
+         covering whole front face, completely").
+
+         It used to be a rectangle inside the content box, which left a wide blank border and a
+         dead area below the slot — the pattern read as a panel stuck on the face rather than as
+         the face. Passing the outline itself means the fill follows the rounded corners and runs
+         down between the feet, and the engine clips it to the real edge for free.
+
+         A CUT pattern is held off the slot — see below for why only a cut. */
+      const slotBox = bboxOf([[g.backSlot[0]![0]!]]);
+      const region: Shapes = [[g.backPlank]];
+      const pb = bboxOf(region);
+      const w = pb.maxX - pb.minX;
+      const h = pb.maxY - pb.minY;
+      if (w > 10 && h > 10) {
+        const chosen = str(v, 'patternId');
+        const def = (chosen.startsWith('pm-') ? await libraryPattern(chosen) : patternById(chosen)) ?? patternById(FALLBACK_PATTERN)!;
+        let op = str(v, 'patternOp') as PatternOp;
+        if (!def.ops.includes(op)) {
+          const fallback = def.ops[0]!;
+          patternWarnings.push(`${def.name} cannot be ${OP_WORD[op]} — it is ${OP_WORD[fallback]} instead.`);
+          op = fallback;
+        }
+        const web = num(v, 'patternWeb');
+        /* The slot keep-out, for a CUT only (Ian, 2026-09-22, on the keychain stand's ring hole:
+           "i want the pattern to ignore the hole, like its not there, when im scoring or
+           engraving" — the same rule applies here).
+
+           A cut pattern puts real holes in the panel, and one landing beside the slot leaves a
+           thread of wood where the other piece grips: that has to stay a web away. A score or an
+           engrave removes nothing — the slot is cut out regardless, so a line crossing it is
+           gone afterwards — and holding the pattern off it only left a bald band across the
+           panel. */
+        if (op === 'cut') {
+          const keep = Math.max(web, SLOT_KEEP);
+          patternKeepOut = {
+            minX: slotBox.minX - keep, maxX: slotBox.maxX + keep,
+            minY: slotBox.minY - keep, maxY: slotBox.maxY + keep,
+          };
+        }
+        const fill = fillShape(region, def, {
+          op,
+          scale: num(v, 'patternScale') / 100,
+          angle: num(v, 'patternAngle'),
+          web,
+          /* No inset: the pattern runs to the piece's real edge, which is the whole point of
+             filling the face rather than a box on it.
+
+             Nothing is lost by it. A score or an engrave is clipped to the outline anyway, so it
+             stops exactly at the edge and the burn never leaves the material. A CUT is kept safe
+             by `web` instead — the engine drops any hole that comes within a web of the edge,
+             which is the rule that actually protects the outline; an inset was only ever a
+             blunter way of saying the same thing.
+
+             It also could not be used here: `insetShapes` is a mitred vertex offset and it folds
+             on this outline's notch, so asking for one got a warning and ran to the edge anyway.
+             Better to mean it. */
+          inset: 0,
+          ...(op === 'cut' ? { slitWidth: 0.25 } : {}),
+        });
+        patternWarnings.push(...fill.warnings);
+        if (op === 'cut') {
+          if (fill.shapes.length) backLayers.push({ id: 'panel-pattern', label: def.name, shapes: fill.shapes, kind: 'fill' as const, op: 'cut', stencil: false });
+        } else if (op === 'engrave') {
+          if (fill.shapes.length) backLayers.push({ id: 'panel-pattern', label: def.name, shapes: fill.shapes, kind: 'fill' as const, op: 'engrave' });
+          if (fill.paths.length) backLayers.push({ id: 'panel-pattern-lines', label: `${def.name} lines`, shapes: [], op: 'score', paths: fill.paths });
+        } else {
+          backLayers.push({ id: 'panel-pattern', label: def.name, shapes: fill.shapes, kind: 'fill' as const, op: 'score', paths: fill.paths });
+        }
+      } else patternWarnings.push('The back panel is too small to pattern — a taller stand, or turn the pattern off.');
+    }
+
     // ------------------------------------------------------------------ the pieces --
-    const pieces = crossStandPieces(g, { front: block });
+    // The slot keep-out applies to a CUT pattern only, for the same reason the keychain stand's
+    // ring hole does: a cut pattern reaching the joint leaves a thread of wood where the other
+    // piece grips, while a score or an engrave removes nothing — the slot is cut out regardless,
+    // so a line crossing it is simply gone afterwards, and holding the pattern off it only left
+    // a bald band across the panel.
+    const pieces = crossStandPieces(g, {
+      front: block,
+      back: patternKeepOut ? keepOff(backLayers, patternKeepOut) : backLayers,
+    });
 
     // ------------------------------------------------------------------ what to say --
     // The facility's first: whether the thing stands up outranks how the name came out.
-    const warnings = [...g.warnings];
+    const warnings = [...g.warnings, ...patternWarnings];
     if (name.length && fit < 0.75) warnings.push(`The name was shrunk to ${round1(nameSize * fit)} mm to fit the lip.`);
     if (name.length && nameSize * fit < MIN_CAP) {
       warnings.push('Below about 5 mm, thin and script fonts break up when engraved. Pick a bolder face or a taller stand.');

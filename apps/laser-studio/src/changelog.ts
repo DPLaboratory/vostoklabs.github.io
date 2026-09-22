@@ -7,6 +7,19 @@ import type { ChangelogEntry } from '@vostok/ui-kit';
 export const CHANGELOG: ChangelogEntry[] = [
   {
     date: '2026-09-22',
+    title: 'A pocket stand, a better desk stand, cleaner patterns',
+    changes: [
+      { kind: 'added', text: 'Keychain phone stand: one flat bar with a slot your phone drops into, a ring hole and your name on the face.' },
+      { kind: 'changed', text: 'The desk phone stand is redrawn — straight-sided pieces, and the front one stands on two legs instead of a solid slab.' },
+      { kind: 'fixed', text: 'Scored patterns no longer burn a grid behind the design where the pattern crosses from one tile to the next.' },
+      { kind: 'fixed', text: 'Waves and scales patterns came out as a thicket of overlapping circles. They are the pattern the picker shows now.' },
+      { kind: 'added', text: 'Pattern fill: an optional rim round the edge, and the clear centre starts switched off.' },
+      { kind: 'added', text: 'Family tree: letter spacing, and a branch under each name that holds the rows together.' },
+      { kind: 'fixed', text: 'The licence reminder goes away on its own, and several downloads no longer stack several of them up.' },
+    ],
+  },
+  {
+    date: '2026-09-22',
     title: 'Laser Studio is live',
     changes: [
       { kind: 'added', text: 'Forty-two designs, on the Vostok Labs site — keychains, pet and luggage tags, ornaments, QR stands, coasters, cake toppers, signs and pattern fills.' },

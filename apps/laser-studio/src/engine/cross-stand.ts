@@ -58,7 +58,7 @@
 // Two calls because the content box has to exist before a caller can fit type or a QR into it.
 // Nothing here touches manifold: every ring is closed-form, so a node test can hold the whole
 // construction to the equations above.
-import type { Box, Shapes } from '@vostok/laser';
+import { filletRing, type Box, type Shapes } from '@vostok/laser';
 import type { CutRing } from '@vostok/export';
 import { slotRing, slotWidth } from './slots';
 import type { Blank, DesignLayer, PartInput, Pose } from './types';
@@ -69,19 +69,22 @@ const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v
 const rad = (deg: number) => (deg * Math.PI) / 180;
 const turn = (ring: CutRing): CutRing => ring.map(([x, y]) => [-x, -y]);
 
-/** How wide the plank's two ends are, as a share of its width at the crossing. Tapered because
- *  the crossing is where the bending moment peaks and where half the width is slot; and tapered
- *  by DIFFERENT amounts because the two ends do different work. The short arm's end is the front
- *  foot on one piece and the lip that carries the engraving on the other, so it stays broad; the
- *  long arm's end is the top of the stand and the back foot, and it can run slender. Neither ever
- *  goes narrow enough to make the stand easy to knock sideways: at the default they are 60 mm and
- *  34 mm across, so a sideways tip needs 14° and 8° respectively. */
-const TIP_SHORT = 0.75;
-const TIP_LONG = 0.42;
-/** The taper's curve, `1 − u^TAPER_P`. Above 1 the sides leave the crossing flat, so the widest
- *  point is a soft crown rather than a corner; near 1 they run almost straight, which is what
- *  makes the piece read as a plank instead of an urn. */
-const TAPER_P = 1.35;
+/* The sides are STRAIGHT. They used to taper from the crossing to each tip on a curve, which
+   the comment here defended as reading "like a plank instead of an urn" — at the shipped
+   exponent it read like an urn, and Ian's verdict on the result was "totally atrocious"
+   (2026-09-22). The reference he gave is two plain pieces with parallel sides: one rounded
+   rectangle, one notched into two legs. A taper also bought nothing structurally — the crossing
+   is where the bending moment peaks AND where half the width is slot, so thinning everything
+   else only removes material that was not the weak point.
+
+   What made the taper look wrong is worth keeping in mind if anyone reaches for it again: the
+   two arms are different lengths, so a symmetric taper puts the widest point off-centre in the
+   silhouette, and the eye reads that as a mistake rather than as a shape. */
+
+/** The notch in the front piece's foot: what turns one 80 mm bearing edge into two legs.
+ *  Shares of the piece's width and of the long arm, so it holds at any size. */
+const LEG_SHARE = 0.26;
+const NOTCH_DEPTH_SHARE = 0.16;
 /** Air between the two pieces on the sheet, mm. */
 const SHEET_GAP = 8;
 /** No mark sits closer than this to a cut edge, mm — the house inset. */
@@ -91,46 +94,8 @@ const SLOT_WEB = 5;
 
 const ODD_WIDTH = 'The slot comes out an odd width — check the thickness and the kerf.';
 
-// ------------------------------------------------------------------ rounding a corner --
-
-/** The arc that replaces vertex `p` between `a` and `b`, tangent to both edges, radius `r`.
- *  Falls back to the bare vertex where the corner is too tight for the radius asked for. */
-function corner(a: Pt, p: Pt, b: Pt, r: number, segs = 8): Pt[] {
-  if (r <= 0) return [p];
-  const u: Pt = [a[0] - p[0], a[1] - p[1]];
-  const v: Pt = [b[0] - p[0], b[1] - p[1]];
-  const lu = Math.hypot(u[0], u[1]);
-  const lv = Math.hypot(v[0], v[1]);
-  if (lu < 1e-9 || lv < 1e-9) return [p];
-  const un: Pt = [u[0] / lu, u[1] / lu];
-  const vn: Pt = [v[0] / lv, v[1] / lv];
-  const cosA = clamp(un[0] * vn[0] + un[1] * vn[1], -1, 1);
-  const half = Math.acos(cosA) / 2;
-  if (half < 1e-4 || half > Math.PI / 2 - 1e-4) return [p];
-  // Cut back the same distance along both edges, never past half of either one.
-  const d = Math.min(r / Math.tan(half), 0.45 * lu, 0.45 * lv);
-  const rr = d * Math.tan(half);
-  const bis: Pt = [un[0] + vn[0], un[1] + vn[1]];
-  const lb = Math.hypot(bis[0], bis[1]);
-  if (lb < 1e-9) return [p];
-  const c: Pt = [p[0] + (bis[0] / lb) * (rr / Math.sin(half)), p[1] + (bis[1] / lb) * (rr / Math.sin(half))];
-  const s: Pt = [p[0] + un[0] * d, p[1] + un[1] * d];
-  const e: Pt = [p[0] + vn[0] * d, p[1] + vn[1] * d];
-  const a0 = Math.atan2(s[1] - c[1], s[0] - c[0]);
-  let a1 = Math.atan2(e[1] - c[1], e[0] - c[0]);
-  while (a1 - a0 > Math.PI) a1 -= 2 * Math.PI;
-  while (a1 - a0 < -Math.PI) a1 += 2 * Math.PI;
-  const out: Pt[] = [];
-  for (let i = 0; i <= segs; i++) {
-    const t = a0 + ((a1 - a0) * i) / segs;
-    out.push([c[0] + rr * Math.cos(t), c[1] + rr * Math.sin(t)]);
-  }
-  return out;
-}
-
-/** Round every vertex of a closed polygon, each by its own radius. */
-const fillet = (pts: Pt[], radii: number[]): CutRing =>
-  pts.flatMap((p, i) => corner(pts[(i + pts.length - 1) % pts.length]!, p, pts[(i + 1) % pts.length]!, radii[i] ?? 0));
+// The corner rounding these rings use now lives in @vostok/laser (`filletRing`): the keychain
+// phone stand wanted the same thing, which is this repo's rule for moving it into the package.
 
 // ------------------------------------------------------------------ the numbers --
 
@@ -140,6 +105,13 @@ export interface CrossStandInput {
   width: number;
   /** How tall the assembled stand is, table to the back piece's top corner. */
   height: number;
+  /** How much desk it takes, front foot to back foot. The reference's 74.5 mm.
+   *
+   *  An INPUT, not an outcome. It used to be neither — the two arms were both derived from the
+   *  height and the lean, the two pieces came out identical, and whatever depth that implied is
+   *  what you got: 104 mm at the default, against a reference measuring 74.5. Depth is the one
+   *  number a desk object is actually judged on, so it is asked for. */
+  depth?: number;
   t: number;
   kerf: number;
   /** Degrees from the TABLE: the angle the phone leans at. 65–70 is the touchscreen range. */
@@ -169,6 +141,11 @@ export interface CrossStandMetrics {
   /** The plank's width at its two ends: the short arm's (the lip and the front foot) and the long
    *  arm's (the top of the stand and the back foot). */
   tip: { short: number; long: number };
+  /** Each piece's own arms, tip to slot centre, and its length. The two are DIFFERENT parts:
+   *  the back one stands on its short arm and reaches the top on its long one, the front one
+   *  stands on its long arm and catches the phone on its short one (the lip). */
+  back: { short: number; long: number; length: number };
+  front: { short: number; long: number; length: number };
   /** Where the two feet touch the table, as the world's y (front is negative), and the depth
    *  between them — the footprint everything has to stand inside. */
   foot: { front: number; back: number; depth: number };
@@ -223,7 +200,7 @@ export function crossStandGeometry(i: CrossStandInput): CrossStandGeometry {
   const kerf = Math.max(0, i.kerf);
   const lean = clamp(i.lean ?? 67, 45, 80);
   const clearance = i.clearance ?? 0.05;
-  const lipWanted = i.lip ?? 12;
+  const lipWanted = i.lip ?? 20;
   const warnings: string[] = [];
 
   const th = rad(lean);
@@ -231,76 +208,155 @@ export function crossStandGeometry(i: CrossStandInput): CrossStandGeometry {
   const cs = Math.cos(th);
   const tn = sn / cs;
 
-  // ----------------------------------------------------------------- the three equations --
-  const crossHeight = (height + (t / 2) * (sn * tn - cs)) / (1 + tn);
-  const shortArm = (crossHeight - (t / 2) * cs) / sn;
-  const longArm = (crossHeight - (t / 2) * sn) / cs;
-  const length = shortArm + longArm;
+  /* --------------------------------------------------- the equations, from the reference --
+
+     Measured off Ian's own SVG (2026-09-22), which settled a design that had been wrong twice:
+
+       piece            width   length   slot        short arm   long arm
+       back  (the rest) 69.70   155.21   34.84 deep  29.11       126.11
+       front (the prop) 69.10    90.13   34.56 deep  21.51        68.62
+
+     Both slots are half the width, so it is an ordinary 90° cross-lap — the crossing angle was
+     never the problem. Solving "both feet on the table" from those two arms gives θ = 67.0°,
+     which is exactly the lean this engine already defaulted to. What was wrong is that it built
+     ONE part and used it twice, so both pieces got the same arms (41.6 / 96 at the default) and
+     the back foot landed 89 mm behind the crossing instead of 63. Hence a 104 mm footprint for a
+     stand whose reference is 74.5.
+
+     So each piece gets its own split, and all four follow from the crossing height:
+
+       the back piece stands on its SHORT arm, so   a1·sinθ + (t/2)·cosθ = zc
+       the front piece stands on its LONG arm, so   b2·cosθ + (t/2)·sinθ = zc
+       the back piece's long arm reaches the top,   zc + b1·sinθ + (t/2)·cosθ = height
+       the front piece's short arm IS the lip,      a2 = lip
+
+     and the footprint is a1·cosθ + b2·sinθ, which inverts to the closed form below. Check it
+     against the table above: at depth 74.5 and θ = 67 it returns 29.1, 126.1, 68.6. */
+  const wantDepth = i.depth ?? 80;
+  const crossHeight = wantDepth * sn * cs + (t / 2) * (cs * cs * cs + sn * sn * sn);
+  /** The back piece: its foot, and its reach to the top. */
+  const backShort = Math.max(6, (crossHeight - (t / 2) * cs) / sn);
+  const backLong = Math.max(6, (height - crossHeight - (t / 2) * cs) / sn);
+  /** The front piece: the lip it catches the phone with, and its reach down-back to the table. */
+  const frontShort = Math.max(6, lipWanted);
+  const frontLong = Math.max(6, (crossHeight - (t / 2) * sn) / cs);
+
+  // Kept under the old names for everything downstream that reasons about "the" stand: the
+  // shorter foot arm and the longer reach still describe the assembly's envelope.
+  const shortArm = backShort;
+  const longArm = frontLong;
+  const length = Math.max(backShort + backLong, frontShort + frontLong);
 
   // --------------------------------------------------------------------------- the plank --
   const halfW = width / 2;
-  const tipShort = TIP_SHORT * halfW;
-  const tipLong = TIP_LONG * halfW;
+  // Straight sides: both tips are the full width. Kept as names because the metrics and the
+  // content boxes are written in terms of them.
+  const tipShort = halfW;
+  const tipLong = halfW;
+  /** Each piece is drawn short tip at the bottom, long tip at the top, centred on its own box —
+   *  so each has its OWN half-length and its own slot height. They are different parts now. */
+  const backHalfL = (backShort + backLong) / 2;
+  const frontHalfL = (frontShort + frontLong) / 2;
+  const backSlotY = backShort - backHalfL;
+  const frontSlotY = frontShort - frontHalfL;
+  // The envelope, for the callers and the metrics that still speak of one length.
   const halfL = length / 2;
-  /** The slot's centre, in the drawn piece: the crossing, `shortArm` up from the short tip. */
-  const slotY = shortArm - halfL;
-  const cornerR = clamp(i.corner ?? Math.min(9, 0.22 * width), 0, 0.45 * (2 * tipLong));
-  /** The taper: widest at the crossing, where half the width is slot and the bending moment
-   *  peaks, easing to each arm's own tip width. A curve rather than two straight runs and a kink,
-   *  so the widest point is EXACTLY `width` — rounding a kink would quietly cut the stand
-   *  narrower than the customer asked for, and leaving it sharp is a corner nobody drew. */
-  const halfAt = (y: number) => {
-    const [arm, tip] = y >= slotY ? [halfL - slotY, tipLong] : [slotY + halfL, tipShort];
-    const u = clamp(Math.abs(y - slotY) / Math.max(1e-6, arm), 0, 1);
-    return tip + (halfW - tip) * (1 - Math.pow(u, TAPER_P));
+  const slotY = backSlotY;
+  const cornerR = clamp(i.corner ?? Math.min(9, 0.22 * width), 0, 0.45 * width);
+  /** Half the width at height `y`. Constant now — the sides are parallel — but kept as a
+   *  function because the content boxes ask "how wide is the piece up there?" and should not
+   *  have to know the answer never changes.  */
+  const halfAt = (_y: number) => halfW;
+
+  /* The notch: the front piece stands on its LONG arm, and cutting a bay out of that tip leaves
+     two legs instead of one solid end. It is the Π in the reference's flat layout, and it is
+     what the eye reads as a stand rather than a slab. It costs no stability — two legs 80 mm
+     apart bear on the table exactly where the solid edge did, and the contact is still two
+     lines, not four points — and it takes material out of the one place carrying no load.
+
+     The BACK piece keeps a solid tip: that is the face a phone leans on, and the reference
+     draws it as a plain rounded rectangle. */
+  const legW = LEG_SHARE * width;
+  const notchHalf = Math.max(0, halfW - legW);
+  // The reference: a 22 mm bay, ~13 mm deep, in a 69.5 mm piece. Shares of the WIDTH, so the
+  // feet stay feet at any size, and never deep enough to reach a slot.
+  // Every arm a bay is cut into has to keep material between the bay and the slot, and the
+  // binding one is the LIP — the shortest arm on either piece. Getting this wrong cuts the slot
+  // open and the corner falls out of the sheet, which is exactly what it did first time.
+  const armFloor = Math.min(backShort, frontShort, frontLong);
+  const notchDepth = clamp(NOTCH_DEPTH_SHARE * width, 3, Math.max(3, armFloor - SLOT_WEB - slotWidth(t, kerf, clearance)));
+  const notchR = clamp(Math.min(2.5, notchDepth / 4, legW / 4), 0, 4);
+
+  /** One piece, drawn short tip at the bottom and long tip at the top, counter-clockwise.
+   *  `notches` says which ends are cut into two feet — the reference notches the back piece's
+   *  foot, and BOTH ends of the front piece: its foot, and the lip, where the notch is the
+   *  cradle the phone's bottom edge drops into. */
+  const plankOf = (hl: number, notches: { short: boolean; long: boolean }): CutRing => {
+    const pts: Pt[] = [];
+    const radii: number[] = [];
+    const push = (p: Pt, r: number) => { pts.push(p); radii.push(r); };
+    const bay = (y: number, dir: 1 | -1) => {
+      // Into the tip at `y`, out again: right wall down, across, left wall up.
+      push([notchHalf, y], notchR);
+      push([notchHalf, y - dir * notchDepth], notchR);
+      push([-notchHalf, y - dir * notchDepth], notchR);
+      push([-notchHalf, y], notchR);
+    };
+    const canNotch = notchHalf > 1 && notchDepth > 1;
+    push([halfW, -hl], cornerR);
+    push([halfW, hl], cornerR);
+    if (notches.long && canNotch) bay(hl, 1);
+    push([-halfW, hl], cornerR);
+    push([-halfW, -hl], cornerR);
+    if (notches.short && canNotch) {
+      // Drawn right-to-left along the bottom edge, so the bay is entered from the left here.
+      push([-notchHalf, -hl], notchR);
+      push([-notchHalf, -hl + notchDepth], notchR);
+      push([notchHalf, -hl + notchDepth], notchR);
+      push([notchHalf, -hl], notchR);
+    }
+    return filletRing(pts, radii);
   };
-  const steps = Math.max(8, Math.ceil(length / 1.5));
-  // The crossing itself is always sampled: it is the one height the customer asked for by name,
-  // and a curve that only passes near it comes out a few hundredths narrow.
-  const rows: number[] = [slotY];
-  for (let k = 1; k < steps; k++) {
-    const y = -halfL + (length * k) / steps;
-    if (Math.abs(y - slotY) > 1e-6) rows.push(y);
-  }
-  rows.sort((a, b) => a - b);
-  const side = (sign: 1 | -1): Pt[] => {
-    const out: Pt[] = rows.map((y) => [sign * halfAt(y), y] as Pt);
-    return sign === 1 ? out : out.reverse();
-  };
-  const pts: Pt[] = [[tipShort, -halfL], ...side(1), [tipLong, halfL], [-tipLong, halfL], ...side(-1), [-tipShort, -halfL]];
-  const radii = pts.map((p) => (Math.abs(Math.abs(p[1]) - halfL) < 1e-9 ? cornerR : 0));
-  /** The part, as drawn for the BACK piece. */
-  const plank = fillet(pts, radii);
+
+  /** The back piece: solid at the top (the phone leans on it), two feet at the bottom. */
+  const plank = plankOf(backHalfL, { short: true, long: false });
+  /** The front piece: two feet where it reaches the table, and a cradle notch in the lip. */
+  const leggedPlank = plankOf(frontHalfL, { short: true, long: true });
 
   // The joint. The slot is a void, so it is drawn a kerf narrow and comes off the machine on
   // `t + clearance`; its depth runs to the plank's own centreline, so the two depths sum to the
   // width at the crossing and the pieces' side edges finish flush.
   const slot = { width: slotWidth(t, kerf, clearance), depth: halfW };
-  const backSlot: Shapes = [[slotRing(-halfW, slotY, slot.width, slot.depth, 'left')]];
-  const frontSlot: Shapes = [[turn(slotRing(-halfW, slotY, slot.width, slot.depth, 'left'))]];
+  const backSlot: Shapes = [[slotRing(-halfW, backSlotY, slot.width, slot.depth, 'left')]];
+  const frontSlot: Shapes = [[slotRing(halfW, frontSlotY, slot.width, slot.depth, 'right')]];
 
   // ----------------------------------------------------------------- what may be engraved --
   // Both boxes run from a web above the slot to the tip, as wide as the plank is at their
   // narrow end. On the front piece that is the lip — the one face a docked phone leaves visible.
-  const topY = halfL - Math.max(EDGE, cornerR);
-  const boxAbove = (from: number): Box => ({
-    minX: -(halfAt(topY) - EDGE), maxX: halfAt(topY) - EDGE,
-    minY: from + slot.width / 2 + SLOT_WEB, maxY: topY,
-  });
-  const content = boxAbove(-slotY);
-  const backContent = boxAbove(slotY);
+  const boxAbove = (from: number, hl: number): Box => {
+    const topY = hl - Math.max(EDGE, cornerR) - (notchDepth > 1 ? notchDepth : 0);
+    return {
+      minX: -(halfAt(topY) - EDGE), maxX: halfAt(topY) - EDGE,
+      minY: from + slot.width / 2 + SLOT_WEB, maxY: topY,
+    };
+  };
+  // The front piece's face is its LIP — the one part a docked phone leaves in plain view — and
+  // the back piece's is everything above its slot.
+  const content = boxAbove(frontSlotY, frontHalfL);
+  const backContent = boxAbove(backSlotY, backHalfL);
 
   // ------------------------------------------------------------------------ standing up --
   // The piece's centre is `half` along its long arm from the crossing. The back piece leans by
   // the lean itself; the front piece is the same part turned about, so it takes the lean plus a
   // right angle — which is what puts the two lengths at 90° and faces its engraved side
   // down-front, at the customer.
-  const half = halfL - shortArm;
-  const backPose: Pose = { x: 0, y: half * cs, z: crossHeight + half * sn, rx: lean };
-  const frontPose: Pose = { x: 0, y: half * sn, z: crossHeight - half * cs, rx: lean + 90 };
+  const backHalf = backHalfL - backShort;
+  const frontHalf = frontHalfL - frontShort;
+  const backPose: Pose = { x: 0, y: backHalf * cs, z: crossHeight + backHalf * sn, rx: lean };
+  const frontPose: Pose = { x: 0, y: frontHalf * sn, z: crossHeight - frontHalf * cs, rx: lean + 90 };
 
   // ---------------------------------------------------------------------- does it stand --
-  const foot = { front: -shortArm * cs + (t / 2) * sn, back: longArm * sn - (t / 2) * cs, depth: 0 };
+  const foot = { front: -backShort * cs + (t / 2) * sn, back: frontLong * sn - (t / 2) * cs, depth: 0 };
   foot.depth = foot.back - foot.front;
   const crotch = { y: (t / 2) * (cs - sn), z: crossHeight + (t / 2) * (cs + sn) };
   const com = {
@@ -317,8 +373,8 @@ export function crossStandGeometry(i: CrossStandInput): CrossStandGeometry {
     warnings.push('A phone leaning on this lands close to the edge of the footprint — a lower lean or a shorter stand is steadier.');
   }
   if (width < PHONE.width - 5) warnings.push('Narrower than a phone: it will hold one, but a knock can tip it sideways.');
-  if (shortArm < lipWanted + 2) warnings.push('The lip is too shallow to catch a phone in a case — make the stand taller.');
-  if (longArm < PHONE.length / 2) warnings.push('A big phone leans past the top of the stand — make it taller.');
+  if (frontShort < 10) warnings.push('The lip is too shallow to catch a phone in a case — 12 mm or more holds one.');
+  if (backLong < PHONE.length / 2) warnings.push('A big phone leans past the top of the stand — make it taller.');
   if (slot.width <= 0.5 || slot.width >= 1.8 * t) warnings.push(ODD_WIDTH);
   if (content.maxY - content.minY < 8 || content.maxX <= content.minX) {
     warnings.push('There is no room left on the front piece to engrave anything — make the stand taller.');
@@ -326,8 +382,9 @@ export function crossStandGeometry(i: CrossStandInput): CrossStandGeometry {
 
   return {
     width, height, t,
+    // The back piece is the solid panel the phone rests on; the front piece stands on two legs.
     backPlank: plank,
-    frontPlank: turn(plank),
+    frontPlank: leggedPlank,
     backSlot,
     frontSlot,
     content,
@@ -337,6 +394,8 @@ export function crossStandGeometry(i: CrossStandInput): CrossStandGeometry {
     metrics: {
       lean, height, width,
       crossHeight, shortArm, longArm, length,
+      back: { short: backShort, long: backLong, length: backShort + backLong },
+      front: { short: frontShort, long: frontLong, length: frontShort + frontLong },
       tip: { short: 2 * tipShort, long: 2 * tipLong },
       foot,
       slot,

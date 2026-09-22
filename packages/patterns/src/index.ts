@@ -46,6 +46,7 @@ export {
   clipIslandToRegion,
   trimNearEdge,
   mergeLines,
+  outlineOfRegions,
   chainSegments,
   dedupeIslands,
 } from './clip';

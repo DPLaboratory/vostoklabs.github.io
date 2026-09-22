@@ -92,8 +92,35 @@ export function openLicenseModal(opts: LicenseModalOptions = {}): { close(): voi
 
 /** Corner reminder for subsequent downloads (red-bordered card, top right),
  *  the clicker's lighter-touch nudge after the first full modal. */
+/** How long the corner reminder stays before it takes itself away.
+ *
+ *  It is a reminder, not a decision: there is nothing in it to answer, and the licence line is
+ *  in the export's own description and in the FAQ besides. A minute is long enough to read
+ *  twice and short enough that it is gone before the next export. */
+const REMINDER_MS = 60_000;
+
+/** The one reminder on screen, if any. There is never a second (see below). */
+let liveReminder: { card: HTMLElement; close: () => void; restart: () => void } | null = null;
+
+/**
+ * The corner reminder after an export that is not the first of the session.
+ *
+ * ONE at a time, and it leaves on its own. Both halves were wrong: every export appended
+ * another card at the same fixed position, so a customer exporting four times got four stacked
+ * on top of each other, and nothing ever removed any of them — they sat in the corner for the
+ * rest of the session and had to be dismissed one by one (Ian, 2026-09-22: "if i download
+ * several times, i have to close all the times... so i can just close it once").
+ *
+ * A second export while one is up re-arms the timer on the card already there rather than
+ * building another: the message is identical, so a second copy says nothing the first did not,
+ * and the only thing the new export changes is how long it should stay.
+ */
 export function licenseReminderToast(): { close(): void } {
   if (isDesktop()) return noopHandle();
+  if (liveReminder) {
+    liveReminder.restart();
+    return { close: liveReminder.close };
+  }
   const s = BRAND.pricing.subscription;
 
   const body = el('p');
@@ -120,10 +147,30 @@ export function licenseReminderToast(): { close(): void } {
     }),
   ]);
 
-  const handle = { close: () => toastCard.remove() };
-  closeBtn.addEventListener('click', handle.close);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const close = () => {
+    clearTimeout(timer);
+    if (liveReminder?.card === toastCard) liveReminder = null;
+    // Slide it back out the way it came in, then drop it. `transitionend` rather than a hard
+    // delay so the duration stays the stylesheet's (`--dur-in-lg`) and nobody has to keep two
+    // numbers in step; the timeout is the fallback for a tab that never fires one — reduced
+    // motion, a background tab — because a card left in the DOM is the bug being fixed.
+    toastCard.classList.remove('show');
+    const drop = () => toastCard.remove();
+    toastCard.addEventListener('transitionend', drop, { once: true });
+    setTimeout(drop, 1000);
+  };
+  const restart = () => {
+    clearTimeout(timer);
+    timer = setTimeout(close, REMINDER_MS);
+  };
+
+  const handle = { close };
+  closeBtn.addEventListener('click', close);
   document.body.append(toastCard);
   requestAnimationFrame(() => toastCard.classList.add('show'));
+  liveReminder = { card: toastCard, close, restart };
+  restart();
   return handle;
 }
 

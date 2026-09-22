@@ -15,7 +15,7 @@ import { readSymbols } from '../symbols/model';
 // The tile geometry loads only when a `pm-` tile is actually built or shown, so a customer who
 // stays with the procedural patterns never pays for it.
 import { circleRing, type Shapes } from '@vostok/laser';
-import { fillShape, patternById, type PatternDef, type PatternOp } from '@vostok/patterns';
+import { fillShape, insetShapes, patternById, type PatternDef, type PatternOp } from '@vostok/patterns';
 import libraryIndex from '@vostok/patterns/library-index';
 import { finalHoleCentre } from '../engine/editorGeometry';
 import { textLayer } from '../engine/text';
@@ -70,7 +70,7 @@ export const patternFill: TemplateDef = {
   blurb: 'Any shape filled with a repeating pattern — honeycomb, asanoha, living hinge — cut out, engraved or scored, with room for a monogram.',
   tags: ['home', 'engrave + score + cut'],
   fields: [
-    { kind: 'text', key: 'text', label: 'Monogram', panel: 'right', section: 'Text', value: 'M', placeholder: 'Optional — a letter or two', maxLength: 4, symbols: true },
+    { kind: 'text', key: 'text', label: 'Monogram', panel: 'right', section: 'Text', value: '', placeholder: 'Optional — a letter or two', maxLength: 4, symbols: true },
     { kind: 'font', key: 'font', label: 'Font', panel: 'right', section: 'Font', value: 'bebas-neue', recommended: MONOGRAM_FACES },
     ...shapeFields({ value: 'coaster-round', categories: ['coasters', 'shapes', 'tags', 'keychains'], width: SIZE, height: SIZE, corner: 6, minWidth: 20, maxWidth: 300, maxHeight: 300 }),
     {
@@ -104,7 +104,20 @@ export const patternFill: TemplateDef = {
       visibleWhen: (v) => str(v, 'patternOp') === 'cut',
     },
     { kind: 'number', key: 'margin', label: 'Edge margin', section: 'Pattern', value: 4, min: 0, max: 30, step: 0.5, unit: 'mm' },
-    { kind: 'toggle', key: 'clearCentre', label: 'Clear centre', section: 'Centre', value: true },
+    // A scored line following the outline, a little way in — the border a coaster usually has.
+    // Off by default: the plain filled shape is the design, and a rim is a choice on top of it.
+    // It rides in the shape's own section because it is a property of the PIECE, not of the
+    // pattern: change the shape and the rim follows it.
+    { kind: 'toggle', key: 'rim', label: 'Rim', section: 'Shape & size', value: false, help: 'A scored border following the edge.' },
+    {
+      kind: 'number', key: 'rimInset', label: 'Rim inset', section: 'Shape & size',
+      value: 4, min: 1, max: 20, step: 0.5, unit: 'mm', visibleWhen: (v) => bool(v, 'rim'),
+      help: 'How far in from the edge the border sits.',
+    },
+    // Both off by default (Ian, 2026-09-22: "so we have just the coaster with the pattern"). The
+    // clear disc and the letter in it are a second design on top of the first one; a template
+    // opens on the simplest thing it makes, and the two controls are one click away.
+    { kind: 'toggle', key: 'clearCentre', label: 'Clear centre', section: 'Centre', value: false },
     { kind: 'number', key: 'clearRadius', label: 'Clear radius', section: 'Centre', value: 17, min: 3, max: 120, step: 0.5, unit: 'mm', visibleWhen: (v) => bool(v, 'clearCentre') },
     { kind: 'number', key: 'size', label: 'Monogram size', section: 'Centre', value: 20, min: 4, max: 120, step: 0.5, unit: 'mm', visibleWhen: (v) => str(v, 'text').trim() !== '' },
     opField('Centre', 'engrave', 'Monogram'),
@@ -176,6 +189,19 @@ export const patternFill: TemplateDef = {
       if (fill.paths.length) layers.push({ id: 'pattern-lines', label: `${def.name} lines`, shapes: [], op: 'score', paths: fill.paths });
     } else {
       layers.push({ id: 'pattern', label: def.name, shapes: fill.shapes, op: 'score', paths: fill.paths });
+    }
+
+    // The rim: the outline again, a little way in, scored. `insetShapes` is a mitred vertex
+    // offset and answers null when the outline folds in on itself — a star's arms at a deep
+    // inset — so a rim that cannot exist says so rather than drawing a knot.
+    if (bool(v, 'rim')) {
+      const inset = num(v, 'rimInset');
+      const rim = insetShapes(shapes, inset);
+      if (rim?.length) layers.push({ id: 'rim', label: 'Rim', shapes: rim, op: 'score' });
+      // The usual cause is a corner, not the size: inset a rounded rectangle by more than its
+      // corner radius and the corner has nowhere to go. Say that, because "bring it in" alone
+      // sends you to the wrong slider.
+      else warnings.push(`A ${inset} mm rim does not fit this shape — it is wider than a corner can take. Bring the rim in, or raise Corner radius.`);
     }
 
     const text = str(v, 'text').trim();

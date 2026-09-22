@@ -73,6 +73,20 @@ export default defineConfig(({ mode }) => ({
   base: './',
   plugins: [makerlabPlugin(mode === 'makerworld')],
   worker: { format: 'es' },
+  server: {
+    /* Don't watch `tests/`.
+     *
+     * Every headless harness in there points Chrome at a `--user-data-dir` inside the app —
+     * `tests/.headless/chrome-profile`, `tests/node/.out/chrome-shoot`, and four more — and
+     * Chrome writes journal and lock files into them continuously. Chokidar tries to stat those
+     * while Chrome is mid-write and the dev server DIES on an `UNKNOWN` fs error, mid-run.
+     *
+     * That is what was behind a string of "the server is down" and "the test can't find the
+     * gallery" symptoms while this app was being reviewed: not a slow cold start, and not the
+     * app — the server had crashed under the very test that was driving it. Nothing in `tests/`
+     * is ever part of the bundle, so there is nothing to watch there anyway. */
+    watch: { ignored: ['**/tests/**'] },
+  },
   build: {
     target: 'es2022',
     // The MakerLab build goes to its own folder, never `dist/` — `dist/` is what deploy.yml

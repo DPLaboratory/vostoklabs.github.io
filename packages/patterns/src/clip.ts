@@ -502,6 +502,88 @@ export function mergeLines(lines: Polyline[]): Polyline[] {
   return chainSegments(segments);
 }
 
+/**
+ * Filled regions → the outline of their UNION, as lines.
+ *
+ * A tiled fill is built cell by cell, and a motif that runs off one cell into the next leaves
+ * both cells carrying the same edge along the cell boundary. Score each island on its own and
+ * that boundary is burnt: a grid appears behind the pattern, drawn straight through the motif
+ * it is supposed to be part of. Ian saw it on `japanese-pattern-7` (2026-09-22); it was there
+ * for every one of the library's fill tiles, which is why some patterns scored cleanly and some
+ * did not.
+ *
+ * What the eye expects is the boundary of the merged region, so: an edge covered by TWO regions
+ * is interior and goes, an edge covered by one is boundary and stays. That is parity, not
+ * `mergeLines`' deduplication — merging two coincident edges into one is exactly what drew the
+ * grid. Partial overlaps fall out of it correctly too, because coverage is counted along the
+ * line rather than per whole segment: where three cells meet along a run, only the odd stretches
+ * survive.
+ *
+ * Not a general polygon union. It resolves coincident EDGES, which is the only way a tiled fill
+ * makes an interior boundary; two regions that genuinely cross would need the host's boolean,
+ * and no tile in the library does that — they are clipped to their cells by construction.
+ */
+export function outlineOfRegions(rings: Ring[]): Polyline[] {
+  const groups = new Map<string, { ux: number; uy: number; ox: number; oy: number; spans: [number, number][] }>();
+  for (const ring of rings) {
+    for (let i = 0; i < ring.length; i++) {
+      // Rings are closed, so the last point joins the first — that edge is a boundary like any
+      // other, and leaving it out opens every loop at one arbitrary corner.
+      const a = ring[i]!;
+      const b = ring[(i + 1) % ring.length]!;
+      let dx = b[0] - a[0];
+      let dy = b[1] - a[1];
+      const len = Math.hypot(dx, dy);
+      if (len < 1e-6) continue;
+      dx /= len;
+      dy /= len;
+      if (dx < -1e-9 || (Math.abs(dx) <= 1e-9 && dy < 0)) {
+        dx = -dx;
+        dy = -dy;
+      }
+      const t = a[0] * dx + a[1] * dy;
+      const ox = a[0] - dx * t;
+      const oy = a[1] - dy * t;
+      const k = `${Math.round(dx * 1e5)},${Math.round(dy * 1e5)}|${Math.round(ox * 200)},${Math.round(oy * 200)}`;
+      let g = groups.get(k);
+      if (!g) groups.set(k, (g = { ux: dx, uy: dy, ox, oy, spans: [] }));
+      const ta = (a[0] - g.ox) * g.ux + (a[1] - g.oy) * g.uy;
+      const tb = (b[0] - g.ox) * g.ux + (b[1] - g.oy) * g.uy;
+      g.spans.push(ta < tb ? [ta, tb] : [tb, ta]);
+    }
+  }
+
+  const segments: [Pt, Pt][] = [];
+  for (const g of groups.values()) {
+    const at = (s: number): Pt => [g.ox + g.ux * s, g.oy + g.uy * s];
+    // Every endpoint is a place the coverage can change; between two of them it is constant, so
+    // one midpoint test per interval settles it.
+    const cuts = [...new Set(g.spans.flatMap((s) => s))].sort((p, q) => p - q);
+    let run: [number, number] | null = null;
+    const flush = () => {
+      if (run) segments.push([at(run[0]), at(run[1])]);
+      run = null;
+    };
+    for (let i = 0; i < cuts.length - 1; i++) {
+      const lo = cuts[i]!;
+      const hi = cuts[i + 1]!;
+      if (hi - lo < 1e-6) continue;
+      const mid = (lo + hi) / 2;
+      let cover = 0;
+      for (const [s, e] of g.spans) if (s < mid && mid < e) cover++;
+      if (cover % 2 === 1) {
+        if (run && Math.abs(run[1] - lo) < 1e-6) run[1] = hi;
+        else {
+          flush();
+          run = [lo, hi];
+        }
+      } else flush();
+    }
+    flush();
+  }
+  return chainSegments(segments);
+}
+
 /** Segments → polylines, joined wherever exactly two segment ends meet at a point. */
 export function chainSegments(segments: [Pt, Pt][]): Polyline[] {
   const at = new Map<string, number[]>();

@@ -20,6 +20,7 @@ export {
   mirrorX,
   simplifyRing,
   circleRing,
+  filletRing,
   roundedRectRing,
   teardropRing,
   dogTagRing,

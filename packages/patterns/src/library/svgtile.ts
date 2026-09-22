@@ -5,6 +5,7 @@
 // become closed shapes (engrave, and cut where the shapes leave a web — measured, not
 // assumed). The `source` travels with it, because this is the one kind of pattern that did
 // not come from maths.
+import { EdgeIndex, clipPolylines } from '../clip';
 import { bboxOfShapes, pointInRing, segmentDistance, signedArea } from '../geom';
 import { number, num } from '../params';
 import type { Island, ParamSpec, PatternDef, PatternGeometry, PatternSource, Polyline, Pt, Ring } from '../types';
@@ -34,6 +35,17 @@ export interface SvgTileSpec {
 }
 
 type Flatten = (d: string, tol: number) => { rings: Ring[]; polylines: Polyline[] };
+
+/** The cell as a clip region: the rectangle the tile is allowed to paint in.
+ *
+ *  A hair larger than the cell on every side, so a line drawn exactly ON the cell edge — the
+ *  wrap copy of a motif, which most of these tiles carry — is kept rather than landing on the
+ *  boundary and being judged out. The overlap is far below a kerf and the neighbouring cell
+ *  draws the same hair, so nothing shows. */
+function cellIndex(w: number, h: number): EdgeIndex {
+  const e = Math.max(w, h) * 1e-4;
+  return new EdgeIndex([[[[-e, -e], [w + e, -e], [w + e, h + e], [-e, h + e]]]]);
+}
 
 /** Least distance between any two islands of a tiled fill (3 × 3 cells), mm — the web a cut
  *  would leave; 0 when shapes touch or overlap and a cut would drop the material between. */
@@ -137,7 +149,24 @@ export function svgTilePattern(spec: SvgTileSpec, flatten: Flatten): PatternDef 
     let geo: PatternGeometry;
     let web = Infinity;
     if (!isFill) {
-      geo = { holes: [], lines: [...lines, ...layers.flat().map((r): Polyline => [...r, r[0]!])], slits: [] };
+      // Clipped to the cell, because that is what an SVG `<pattern>` does and these tiles are
+      // drawn for one.
+      //
+      // Several of them draw far outside their own cell and let the pattern element cut it
+      // back: `scales-4` is a 25 × 13 cell holding circles of radius 12.5 — twice its own
+      // height. Repeating that unclipped lays a full circle down per cell, and the result is a
+      // thicket of overlapping rings with no scales in it at all (Ian, 2026-09-22: "waves
+      // pattern doesnt work at all"). The card preview looked right the whole time, because the
+      // card IS an SVG `<pattern>` and the browser was clipping it.
+      //
+      // Once per tile, not once per cell: this runs inside the memoised `build`, so a field of
+      // four hundred cells clips nothing — it copies geometry that is already cut to size.
+      //
+      // Only the imported tiles. A procedural pattern's cell is centred on its motif and is MEANT
+      // to overflow — a hexagon on a corner belongs to four cells — which is why the tiler does
+      // not do this for everyone.
+      const all = [...lines, ...layers.flat().map((r): Polyline => [...r, r[0]!])];
+      geo = { holes: [], lines: clipPolylines(all, cellIndex((W + sx) * k, (H + sy) * k)), slits: [] };
     } else {
       const cellArea = (W + sx) * (H + sy) * k * k;
       const share = spec.backgroundShare ?? 0.9;

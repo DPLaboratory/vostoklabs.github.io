@@ -14,7 +14,7 @@
 //
 // An inset shrinks the region first (a vertex offset with a mitre cap — enough for the blanks
 // this fills, and it gives up cleanly, with a warning, on an outline it cannot shrink).
-import { EdgeIndex, clipHoleToRegion, clipIslandToRegion, clipPolylines, clipRingsAsLines, dedupeIslands, mergeLines, trimNearEdge } from './clip';
+import { EdgeIndex, clipHoleToRegion, clipIslandToRegion, clipPolylines, dedupeIslands, mergeLines, outlineOfRegions, trimNearEdge } from './clip';
 import { bboxOfShapes, boxCentre, boxValid, isConvex, ringLength, segmentsIntersect, signedArea, slot as slotRing } from './geom';
 import { resolveParams } from './params';
 import { tileGeometry } from './tiler';
@@ -186,9 +186,12 @@ export function fillShape(region: Shapes, def: PatternDef, opts: FillOptions): F
     const wanted: Polyline[] = [...lines, ...slits];
     paths = clipPolylines(wanted, index);
     if (op === 'score' && scoredRings.length) {
-      const rings = clipRingsAsLines(scoredRings, index);
-      for (const r of rings.closed) shapes.push([r]);
-      paths.push(...rings.open);
+      // The boundary of the UNION of the regions, not every region's own outline: a tiled fill
+      // is built cell by cell, so a motif crossing a cell boundary leaves both cells carrying
+      // that edge, and tracing them one by one burns a grid straight through the pattern. See
+      // `outlineOfRegions`. Clipped to the material afterwards, as lines — a scored region and a
+      // scored line are the same burn, and the outline is no longer one loop per island anyway.
+      paths.push(...clipPolylines(outlineOfRegions(scoredRings), index));
     }
     if (op === 'engrave') {
       // Engraved lines are burnt as bands when a width is known: a quad per segment and a

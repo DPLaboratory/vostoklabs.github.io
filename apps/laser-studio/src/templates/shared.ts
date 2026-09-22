@@ -14,6 +14,44 @@ import { rimWidthFor } from '../engine/frame';
 import { keyringFields } from './keyring';
 import { bool, num, str, type Field, type Values } from './types';
 
+// ------------------------------------------------------- keeping a mark off something --
+
+/**
+ * Everything of `layers` that stays out of `box`.
+ *
+ * A keep-out applied to a fill's OUTPUT rather than to the region handed to it. Passing the
+ * exclusion as a hole in the region is the tidier idea and it is not reliable when the thing to
+ * avoid touches the piece's edge — a slot that opens on the edge shares a boundary with the
+ * outer ring, and the even-odd test the clipper uses goes wrong exactly there. Measured on the
+ * phone stand: the pattern still touched the slot at 0 mm with a 3 mm hole in the region, and at
+ * 0.4 mm with an 8 mm one.
+ *
+ * A closed shape is dropped WHOLE if it meets the box — half a hexagon is not a hexagon. An open
+ * run is SPLIT at the box instead, because a scored line that stops short of the joint is
+ * exactly what is wanted and it leaves no stub behind.
+ */
+export function keepOff(layers: DesignLayer[], box: Box): DesignLayer[] {
+  const out = ([x, y]: [number, number]) => x < box.minX || x > box.maxX || y < box.minY || y > box.maxY;
+  return layers
+    .map((l) => {
+      const shapes = l.shapes.filter((island) => island.every((ring) => ring.every(out)));
+      const paths: [number, number][][] = [];
+      for (const run of l.paths ?? []) {
+        let cur: [number, number][] = [];
+        for (const p of run) {
+          if (out(p)) cur.push(p);
+          else {
+            if (cur.length > 1) paths.push(cur);
+            cur = [];
+          }
+        }
+        if (cur.length > 1) paths.push(cur);
+      }
+      return { ...l, shapes, ...(l.paths ? { paths } : {}) };
+    })
+    .filter((l) => l.shapes.length || (l.paths?.length ?? 0));
+}
+
 // ------------------------------------------------------------- the shape --
 
 export interface ShapeFieldOpts {

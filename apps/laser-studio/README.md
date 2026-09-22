@@ -152,7 +152,7 @@ what has to be reconstructed after a clone: `makerlab/README.md` (gitignored wit
 ## Checking the whole library
 
 ```bash
-node tests/node/run-all.mjs        # all 42 templates through the real engine, in node
+node tests/node/run-all.mjs        # all 43 templates through the real engine, in node
 pnpm --filter laser-studio test:browser
 pnpm typecheck && pnpm check:ui && pnpm check:chrome && pnpm check:notices
 ```

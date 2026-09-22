@@ -337,3 +337,56 @@ export function islandsFromContours(contours: number[][][]): CutRing[][] {
   });
   return [...islands.values()];
 }
+
+
+// ---------------------------------------------------------------- rounding a corner --
+
+/*
+ * Rounding the corners of a ring you built yourself.
+ *
+ * `roundedRectRing` above covers a rectangle; this covers everything else — an L, a notched
+ * plank, any polygon where each vertex wants its own radius. It lived in the laser studio's
+ * cross-stand engine until a second caller appeared (the keychain phone stand, 2026-09-22),
+ * which is this repo's rule for when something moves into the package.
+ */
+/** The arc that replaces vertex `p` between `a` and `b`, tangent to both edges, radius `r`.
+ *  Falls back to the bare vertex where the corner is too tight for the radius asked for. */
+const clamp = (v: number, lo: number, hi: number) => (v < lo ? lo : v > hi ? hi : v);
+
+function cornerArc(a: Pt, p: Pt, b: Pt, r: number, segs = 8): Pt[] {
+  if (r <= 0) return [p];
+  const u: Pt = [a[0] - p[0], a[1] - p[1]];
+  const v: Pt = [b[0] - p[0], b[1] - p[1]];
+  const lu = Math.hypot(u[0], u[1]);
+  const lv = Math.hypot(v[0], v[1]);
+  if (lu < 1e-9 || lv < 1e-9) return [p];
+  const un: Pt = [u[0] / lu, u[1] / lu];
+  const vn: Pt = [v[0] / lv, v[1] / lv];
+  const cosA = clamp(un[0] * vn[0] + un[1] * vn[1], -1, 1);
+  const half = Math.acos(cosA) / 2;
+  if (half < 1e-4 || half > Math.PI / 2 - 1e-4) return [p];
+  // Cut back the same distance along both edges, never past half of either one.
+  const d = Math.min(r / Math.tan(half), 0.45 * lu, 0.45 * lv);
+  const rr = d * Math.tan(half);
+  const bis: Pt = [un[0] + vn[0], un[1] + vn[1]];
+  const lb = Math.hypot(bis[0], bis[1]);
+  if (lb < 1e-9) return [p];
+  const c: Pt = [p[0] + (bis[0] / lb) * (rr / Math.sin(half)), p[1] + (bis[1] / lb) * (rr / Math.sin(half))];
+  const s: Pt = [p[0] + un[0] * d, p[1] + un[1] * d];
+  const e: Pt = [p[0] + vn[0] * d, p[1] + vn[1] * d];
+  const a0 = Math.atan2(s[1] - c[1], s[0] - c[0]);
+  let a1 = Math.atan2(e[1] - c[1], e[0] - c[0]);
+  while (a1 - a0 > Math.PI) a1 -= 2 * Math.PI;
+  while (a1 - a0 < -Math.PI) a1 += 2 * Math.PI;
+  const out: Pt[] = [];
+  for (let i = 0; i <= segs; i++) {
+    const t = a0 + ((a1 - a0) * i) / segs;
+    out.push([c[0] + rr * Math.cos(t), c[1] + rr * Math.sin(t)]);
+  }
+  return out;
+}
+
+/** Round every vertex of a closed polygon, each by its own radius. */
+export function filletRing(pts: Pt[], radii: number[]): CutRing {
+  return pts.flatMap((p, i) => cornerArc(pts[(i + pts.length - 1) % pts.length]!, p, pts[(i + 1) % pts.length]!, radii[i] ?? 0));
+}
