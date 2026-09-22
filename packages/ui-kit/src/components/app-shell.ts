@@ -25,8 +25,10 @@ export interface PanelOptions {
 export interface AppShellOptions {
   /** The topbar element (usually `topbarLinks(...)`). */
   topbar?: HTMLElement;
-  /** Left settings panel. */
-  left: PanelOptions;
+  /** Left settings panel. Omit it for the two-column shell — stage | one panel — that a
+   *  form-driven editor wants (Laser Studio): the picture on the left, the questions on the
+   *  right, and no third column to fill. */
+  left?: PanelOptions;
   /** Center stage — the 3D preview canvas mounts into the returned `stage`. */
   stage?: (HTMLElement | Node)[];
   /** Right panel (fonts / output / export). */
@@ -38,7 +40,9 @@ export interface AppShell {
   root: HTMLElement;
   /** The center stage element — mount your renderer/canvas here. */
   stage: HTMLElement;
-  /** The left panel's scroll container (append extra sections here if needed). */
+  /** The left panel's scroll container (append extra sections here if needed). With no left
+   *  panel (the two-column shell) this is the right panel's scroll, so callers that append
+   *  sections still have a panel to append to. */
   leftScroll: HTMLElement;
   /** The right panel's scroll container. */
   rightScroll: HTMLElement;
@@ -61,13 +65,22 @@ export function panel(side: 'left' | 'right', opts: PanelOptions): { panel: HTML
 
 /** Assemble the standard 3-column generator shell. */
 export function appShell(opts: AppShellOptions): AppShell {
-  const left = panel('left', opts.left);
+  const left = opts.left ? panel('left', opts.left) : null;
   const right = panel('right', opts.right);
   const stage = el('section', { className: 'vl-stage' }, opts.stage ?? []);
 
-  const root = el('main', { className: 'vl-app' });
+  /* `--no-topbar` is load-bearing, not cosmetic. `.vl-app` reserves `grid-template-rows: auto
+     minmax(0, 1fr)` — the `auto` row for the bar, the `1fr` row for the panels. With no bar
+     appended, auto-placement puts the panels in the `auto` row instead and leaves the `1fr` row
+     empty underneath: the columns collapse to their CONTENT height and the rest of the window is
+     dead space, which also means they resize every time a panel's content changes. An embedded
+     build is exactly the case that omits the bar, so every MakerLab embed had it. */
+  const root = el('main', {
+    className: [left ? 'vl-app' : 'vl-app vl-app--2col', opts.topbar ? '' : 'vl-app--no-topbar'].filter(Boolean).join(' '),
+  });
   if (opts.topbar) root.append(opts.topbar);
-  root.append(left.panel, stage, right.panel);
+  if (left) root.append(left.panel);
+  root.append(stage, right.panel);
 
-  return { root, stage, leftScroll: left.scroll, rightScroll: right.scroll };
+  return { root, stage, leftScroll: left?.scroll ?? right.scroll, rightScroll: right.scroll };
 }

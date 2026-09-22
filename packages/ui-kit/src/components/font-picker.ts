@@ -30,6 +30,9 @@ export interface FontPickerOptions {
   onChange(id: string): void;
   /** Curated ids pinned first under "Popular". Default none. */
   featured?: string[];
+  /** The heading over the pinned faces. Default "Popular"; a design that names the faces that
+   *  suit it says "Recommended for this design". */
+  featuredLabel?: string;
   label?: string;
 }
 
@@ -186,7 +189,7 @@ export function fontPicker(opts: FontPickerOptions): FontPickerHandle {
       if (showHeadings) {
         const isFeatured = f.id === pinned || featuredSet.has(f.id);
         if (isFeatured && !printedPopular) {
-          list.append(el('div', { className: 'vl-font-picker__heading', text: 'Popular' }));
+          list.append(el('div', { className: 'vl-font-picker__heading', text: opts.featuredLabel ?? 'Popular' }));
           printedPopular = true;
         } else if (!isFeatured && !printedAll) {
           list.append(el('div', { className: 'vl-font-picker__heading', text: 'All fonts' }));

@@ -1,6 +1,11 @@
 node_modules/
 dist/
 dist-offline/
+# The MakerLab (MakerWorld) build output. It has the NDA SDK compiled into it, so it must never
+# reach this repo — and this repo is public. It lived in `apps/foldbox/.gitignore` only, which is
+# the failure mode CLAUDE.md names: a rule in one app is a rule the next app does not get. Laser
+# Studio's 260-file `dist-mw/` showed up as untracked on the day it shipped. Root level now.
+dist-mw/
 # The single-file offline build. Regenerate with `pnpm --filter <app> build:offline`
 # rather than committing a megabyte of inlined bundle.
 offline/
@@ -89,6 +94,50 @@ apps/*/src/pro/
 # from HEAD hides it from anyone browsing, not from anyone looking.
 apps/laser-slot/
 
+# Laser Toolbox (2026-09-13): the laser editor skeleton — PRD in docs/briefs/laser-toolbox-prd.md.
+# Same fence as laser-slot, for the same reason: unreleased, and undecided on free vs paid.
+# Its kit half (packages/ui-kit editor-shell.*) IS tracked — it is a component, not the product.
+apps/laser-toolbox/
+
+# Laser Keychain (2026-09-17) — the design studio Laser Studio grew out of. Same fence, same
+# reason: unreleased. Plan in docs/briefs/laser-keychain-plan.md.
+apps/laser-keychain/
+#
+# SHIPPED 2026-09-22 — apps/laser-studio, packages/laser and packages/patterns came OUT of this
+# fence and are tracked. The hub card and deploy.yml build from source, so nothing Laser Studio
+# imports can stay fenced: packages/laser (the pure engine — ops, rings, 2D CSG, blanks, keyring,
+# text, plus the clicker's tracer) and packages/patterns (the repeating-pattern engine, with the
+# 330 Pattern Monster tiles under MIT) are public now. The two unreleased laser APPS — the
+# keychain above, the toolbox and laser-slot elsewhere in this file — stay fenced: their engine
+# being readable is not the same as their design being on the site. Consequence to live with:
+# anything added to those two packages is published the moment it is committed. They are shipped
+# code now, not the scratchpad they were until today.
+#
+# @vostok/elements (the curated CC0 / public-domain vector element library) MOVED OUT of this
+# repo entirely on 2026-09-22, to ../vostok-elements — a sibling folder. Nothing in the monorepo
+# imports it, Laser Studio never did, and 77 MB of SVG sitting gitignored inside a public repo
+# that is also the live site bought nothing. It is not a pnpm workspace member any more; its
+# ingest scripts run with plain node from that folder. Only the Library Lab reads it, over the
+# relative path in its vite.config.ts.
+#
+# The Library Lab previews the pattern tiles and that element library and nothing else — still
+# unreleased, still fenced.
+apps/library-lab/
+
+# @vostok/laser's photo half stays fenced even though the rest of the package shipped (Ian,
+# 2026-09-22). It is the AI background-removal feature of the unreleased laser keychain and
+# toolbox — `segment.ts` + `segment.worker.ts` and a 4.5 MB `u2netp.onnx` — and Laser Studio
+# never imports it: `@vostok/laser/photo` is its own export subpath, `src/index.ts` does not
+# touch it, and the built bundle greps clean for `onnxruntime`. Licence was not the question
+# (Apache-2.0 model, MIT runtime, both recorded in models/LICENSE-MODELS.md); permanence was.
+# A binary in git history cannot be taken back out, and an unlaunched feature in a public repo
+# is an announcement — the same rule as the fences above.
+#
+# Consequence, on purpose: a fresh clone has no `packages/laser/src/photo/`, so the `./photo`
+# entry in its package.json resolves to nothing there. Nothing tracked imports it, and the two
+# apps that do are fenced too. Un-ignore it on the day that feature launches.
+packages/laser/src/photo/
+
 # Foldbox ships PRINT-ONLY (2026-08-26). The app is published; its unlaunched CUT half is
 # not. `cutPackPlugin` in apps/foldbox/vite.config.ts already keeps these three modules out
 # of the default bundle — this keeps them out of the public tree as well, for the same
@@ -127,3 +176,7 @@ result.json
 
 # Keychain carabiner headless render output (scripts/render-carabiner.mjs)
 .render-carabiner/
+
+# @vostok/fonts: the Material Symbols metadata snapshot `fetch-icons` caches.
+# 3 MB of build input, re-fetched on demand — the generated icons.ts is the artefact.
+packages/fonts/scripts/.icons-metadata.json

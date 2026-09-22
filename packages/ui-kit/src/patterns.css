@@ -640,11 +640,25 @@ details.vl-section--collapsible[open] > summary {
  */
 .vl-font-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  /* Two cards a row when they can each keep ~118 px, one when they cannot: a card narrower
+     than that truncates every sample and every name. */
+  grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
   gap: var(--space-2);
   max-height: 210px;
   overflow-y: auto;
   padding-right: var(--space-1);
+}
+
+/* A captioned block of cards — "Recommended for this design" over the faces that suit it.
+   The caption's own bottom margin is dropped: the wrapper's gap owns the rhythm. */
+.vl-font-cards {
+  display: grid;
+  gap: var(--space-1);
+  min-height: 0;
+}
+
+.vl-font-cards > .vl-label {
+  margin-bottom: 0;
 }
 
 .vl-font-card {
@@ -1001,3 +1015,148 @@ details.vl-section--collapsible[open] > summary {
   .vl-svgprev__parts { max-height: min(220px, 26vh); }
 }
 
+
+/* ------------------------------------------------------------------ gallery -- */
+
+/* Templates, presets, designs: a picture, a name, a line, a click. See gallery.ts. */
+.vl-gallery {
+  --vl-gallery-min: 220px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(var(--vl-gallery-min), 1fr));
+  gap: var(--space-4);
+}
+
+.vl-gallery-card {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  margin: 0;
+  text-align: left;
+  font: inherit;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-m);
+  overflow: hidden;
+  cursor: pointer;
+  transition:
+    transform var(--dur-hover) var(--ease-standard),
+    border-color var(--dur-hover) var(--ease-standard),
+    box-shadow var(--dur-hover) var(--ease-standard);
+}
+
+.vl-gallery-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--accent);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+}
+
+.vl-gallery-card:focus-visible { outline: none; box-shadow: var(--ring); }
+
+/* 4:3, on the quieter surface, the preview centred inside it. */
+.vl-gallery-card__thumb {
+  position: relative;
+  aspect-ratio: 4 / 3;
+  background: var(--panel-2);
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+
+.vl-gallery-card__thumb > img,
+.vl-gallery-card__thumb > svg {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+.vl-gallery-card__badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  padding: 2px 8px;
+  border-radius: var(--radius-chip);
+  background: var(--accent);
+  color: #fff;
+  font-size: var(--fs-micro);
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+}
+
+.vl-gallery-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px 14px;
+}
+
+.vl-gallery-card__name {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: var(--fs-strong);
+  line-height: 1.3;
+}
+
+.vl-gallery-card__blurb {
+  color: var(--muted);
+  font-size: var(--fs-small);
+  line-height: 1.45;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.vl-gallery-card__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.vl-gallery-tag {
+  padding: 2px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-chip);
+  color: var(--muted);
+  font-size: var(--fs-micro);
+  font-weight: 600;
+  letter-spacing: 0.2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vl-gallery-card:hover { transform: none; }
+}
+
+/* --------------------------------------------------------------- disclosure -- */
+
+/* The quiet fold under one control (`inlineDisclosure()`): a text summary, an indented body. */
+.vl-disclosure { margin: 0; }
+.vl-disclosure > summary {
+  list-style: none;
+  cursor: pointer;
+  width: max-content;
+  padding: 2px 0;
+  color: var(--accent);
+  font-size: var(--fs-small);
+  font-weight: 600;
+  user-select: none;
+}
+.vl-disclosure > summary::-webkit-details-marker { display: none; }
+.vl-disclosure > summary:hover { text-decoration: underline; }
+.vl-disclosure > summary:focus-visible { outline: none; box-shadow: var(--ring); border-radius: 4px; }
+.vl-disclosure > summary .vl-disclosure__close { display: none; }
+.vl-disclosure[open] > summary .vl-disclosure__open { display: none; }
+.vl-disclosure[open] > summary .vl-disclosure__close { display: inline; }
+
+/* Sub-options of a parent control: indented, ruled, spaced like the rows around them. */
+.vl-subfields {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 8px 0 0 2px;
+  padding-left: 14px;
+  border-left: 2px solid var(--line);
+}

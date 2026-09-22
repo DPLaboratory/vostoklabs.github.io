@@ -29,8 +29,8 @@ function parseSvg(raw: string): Element {
 export interface GeneratorHeaderOptions {
   /** Generator name, e.g. "Name Keychain Generator". */
   title: string;
-  /** One-line description under the title. */
-  description: string;
+  /** One-line description under the title. Omitted, the header is the title alone. */
+  description?: string;
   /** Where "Made by Vostok Labs" links (default: the MakerWorld profile). */
   madeByUrl?: string;
   /** Whether to hide the "Made by Vostok Labs" credit. */
@@ -41,7 +41,7 @@ export interface GeneratorHeaderOptions {
 export function generatorHeader(opts: GeneratorHeaderOptions): HTMLElement {
   const children: HTMLElement[] = [
     el('h1', { className: 'vl-app-title', text: opts.title }),
-    el('p', { className: 'vl-app-subtitle', text: opts.description }),
+    ...(opts.description ? [el('p', { className: 'vl-app-subtitle', text: opts.description })] : []),
   ];
 
   // Inside a desktop app the title and description still earn their place — they say which
@@ -116,6 +116,17 @@ export interface PanelCreditOptions {
   /** Where "Made by Vostok Labs" points. Defaults to the MakerWorld profile. */
   madeByUrl?: string;
   /**
+   * The host owns outbound navigation, so the byline is TEXT here, not a link.
+   *
+   * The same answer `isDesktop()` already gives below, for a host this component cannot
+   * detect: an embedded generator inside a sandboxed iframe (MakerLab) where
+   * `target="_blank"` opens nothing. A link that cannot navigate is worse than no link —
+   * it is a control that does nothing when pressed, and it is what invariant #7 exists to
+   * stop. Explicit rather than inferred, for the reason `hostOwnsProjects` is: the host
+   * knows, this component does not.
+   */
+  hostOwnsLinks?: boolean;
+  /**
    * Put the update timeline in the strip. Its button is the compact one — an icon and a
    * word — because this line is a signature, not a call to action.
    */
@@ -144,7 +155,7 @@ export function panelCredit(opts: PanelCreditOptions): HTMLElement {
      this from Vostok Labs — the same call `generatorHeader` makes about its own credit, made
      here too so a generator cannot grow a second outbound link by moving its byline. */
   const byline: (HTMLElement | Node)[] = [document.createTextNode('Made by ')];
-  if (isDesktop()) {
+  if (isDesktop() || opts.hostOwnsLinks) {
     byline.push(parseSvg(VOSTOK_MARK), document.createTextNode(BRAND.name));
   } else {
     const link = el('a', {

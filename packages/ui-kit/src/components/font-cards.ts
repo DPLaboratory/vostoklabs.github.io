@@ -24,8 +24,18 @@ export interface FontCardsOptions {
   lookup?: (id: string) => FontPickerFont | undefined;
   /** Flags a face that lacks glyphs for the sample. Shown and marked, never hidden. */
   supports?: (font: FontPickerFont, sample: string) => boolean;
-  /** Accessible name of the grid. Default "Fonts". */
+  /** Accessible name of the grid. Default "Fonts" (or the caption, when there is one). */
   label?: string;
+  /**
+   * A heading over the grid, in the section-header voice (`.vl-label`).
+   *
+   * One grid needs no caption — it is "the fonts". TWO do: a design that recommends the faces
+   * that actually work for it ("Recommended for this design") shows them above the rest of the
+   * curated list ("More fonts"), and without a word over each block the split reads as a
+   * rendering bug. Given, the component returns a wrapper holding the caption and the grid;
+   * omitted, it returns exactly the grid it always did.
+   */
+  caption?: string;
 }
 
 export type FontCardsHandle = HTMLElement & {
@@ -35,10 +45,15 @@ export type FontCardsHandle = HTMLElement & {
 };
 
 export function fontCards(opts: FontCardsOptions): FontCardsHandle {
-  const root = el('div', {
+  const grid = el('div', {
     className: 'vl-font-grid',
-    attrs: { role: 'listbox', 'aria-label': opts.label ?? 'Fonts' },
-  }) as unknown as FontCardsHandle;
+    attrs: { role: 'listbox', 'aria-label': opts.label ?? opts.caption ?? 'Fonts' },
+  });
+  // The handle is the outermost node either way, so a caller appends what it is given and the
+  // captioned and bare shapes are interchangeable at the call site.
+  const root = (opts.caption
+    ? el('div', { className: 'vl-font-cards' }, [el('p', { className: 'vl-label', text: opts.caption }), grid])
+    : grid) as unknown as FontCardsHandle;
   let value = opts.value;
   let sample = opts.sample || 'Aa';
   const cards = new Map<string, { btn: HTMLButtonElement; sampleEl: HTMLElement; font: FontPickerFont }>();
@@ -51,7 +66,7 @@ export function fontCards(opts: FontCardsOptions): FontCardsHandle {
       'button',
       {
         className: 'vl-font-card',
-        attrs: { type: 'button', role: 'option', title: font.label, 'aria-selected': String(font.id === value) },
+        attrs: { type: 'button', role: 'option', 'aria-selected': String(font.id === value) },
       },
       [sampleEl, el('span', { className: 'vl-font-card__name', text: font.label })],
     ) as HTMLButtonElement;
@@ -74,14 +89,14 @@ export function fontCards(opts: FontCardsOptions): FontCardsHandle {
   }
 
   function paint() {
-    root.replaceChildren();
+    grid.replaceChildren();
     cards.clear();
     const list = [...opts.fonts];
     if (!list.some((f) => f.id === value)) {
       const current = opts.lookup?.(value);
       if (current) list.unshift(current);
     }
-    for (const f of list) root.append(card(f));
+    for (const f of list) grid.append(card(f));
     mark();
   }
 

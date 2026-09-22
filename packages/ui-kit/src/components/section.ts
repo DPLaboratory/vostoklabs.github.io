@@ -42,6 +42,33 @@ export function collapsibleSection(opts: SectionOptions): HTMLDetailsElement {
   return details;
 }
 
+export interface InlineDisclosureOptions {
+  /** The summary while closed — "Show font options". */
+  openLabel: string;
+  /** The summary while open. Default "Show fewer options". */
+  closeLabel?: string;
+  body: (Node | string)[];
+}
+
+/**
+ * A quiet "Show more ▾" fold under one control — the satellite settings of a parent (a font's
+ * boldness and spacing), as opposed to `collapsibleSection()`, which is a peer of the fields
+ * around it and draws a bordered heading. The body is indented (`.vl-subfields`) so it reads as
+ * belonging to the control above. Closed by default: the whole point is a first screen that
+ * stays short.
+ */
+export function inlineDisclosure(opts: InlineDisclosureOptions): HTMLDetailsElement {
+  const summary = el('summary', {}, [
+    el('span', { className: 'vl-disclosure__open', text: opts.openLabel }),
+    el('span', { className: 'vl-disclosure__close', text: opts.closeLabel ?? 'Show fewer options' }),
+  ]);
+  const collapse = el('div', { className: 'vl-collapse' }, [el('div', { className: 'vl-subfields' }, opts.body)]);
+  const details = el('details', { className: 'vl-disclosure' }, [summary, collapse]) as HTMLDetailsElement;
+  details.open = false;
+  makeCollapsible(details);
+  return details;
+}
+
 /**
  * Give an existing `<details>` the kit's open/close animation.
  *

@@ -111,7 +111,8 @@ export { dpad, type DpadOptions, type DpadHandle } from './components/dpad';
 export { nudgePad, type NudgePadOptions, type NudgeAxisOptions, type NudgePadHandle } from './components/nudge-pad';
 export { colorPopover, closeColorPopover, type ColorPopoverOptions, type ColorPopoverOption, type ColorPopoverHandle } from './components/color-popover';
 export { busyChip, type BusyChipOptions, type BusyChipHandle } from './components/busy-chip';
-export { section, collapsibleSection, makeCollapsible, type SectionOptions } from './components/section';
+export { section, collapsibleSection, inlineDisclosure, makeCollapsible, type SectionOptions, type InlineDisclosureOptions } from './components/section';
+export { galleryCard, galleryGrid, type GalleryCardOptions, type GalleryCardHandle, type GalleryGridOptions } from './components/gallery';
 export { drawer, closeAllDrawers, type DrawerOptions, type DrawerHandle } from './components/drawer';
 export { splitDialog, type SplitDialogOptions } from './components/split-dialog';
 export {

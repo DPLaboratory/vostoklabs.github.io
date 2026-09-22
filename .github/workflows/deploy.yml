@@ -98,6 +98,15 @@ jobs:
       - name: Copy Keychain Carabiner Set to Hub Dist
         run: cp -r apps/keychain-carabiner/dist apps/hub/dist/keychain-carabiner
 
+      # Default mode on purpose: `build` resolves `virtual:makerlab` to a no-op stub, so the
+      # published bundle contains no trace of the NDA MakerLab SDK (which is not in this repo
+      # at all). The MakerWorld build is `build:mw`, and it writes to dist-mw/, never here.
+      - name: Build Laser Studio
+        run: pnpm build:laserStudio
+
+      - name: Copy Laser Studio to Hub Dist
+        run: cp -r apps/laser-studio/dist apps/hub/dist/laser-studio
+
       # Every generator the hub links to has to exist under the path generators.json gives it,
       # or the card is a 404 — which is exactly what shipped: the app was written, the registry
       # entry was added, and nothing here ever built it. Cheap to assert, and it fails the

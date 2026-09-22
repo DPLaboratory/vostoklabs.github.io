@@ -57,6 +57,17 @@ export interface NudgePadOptions {
 export type NudgePadHandle = ValueRow<{ x: number; y: number }> & {
   /** Move the pad's limits when the thing being nudged changes size. */
   setRange(axis: 'x' | 'y', max: number): void;
+  /**
+   * Read the same numbers in another unit.
+   *
+   * The MODEL never changes — `setValue`, `getValue` and `onChange` stay in the unit the pad
+   * was built in. Only the two boxes and the word after them do, so an app with a mm | in
+   * switch can hand its whole panel over to the customer's unit without every stored number
+   * becoming ambiguous. `scale` is display-per-model (1 / 25.4 for millimetres shown as
+   * inches) and `decimals` how many places the boxes show; the default is the pad's own
+   * unscaled behaviour, so a pad that never calls this is untouched by its existence.
+   */
+  setUnit(unit: string, scale?: number, decimals?: number): void;
   pad: DpadHandle;
 };
 
@@ -67,7 +78,7 @@ function axisField(
   axis: NudgeAxisOptions,
   unit: string,
   onInput: () => void,
-): { row: HTMLElement; input: HTMLInputElement } {
+): { row: HTMLElement; input: HTMLInputElement; unitEl: HTMLElement } {
   const input = el('input', {
     className: 'vl-nudge__num',
     attrs: {
@@ -84,13 +95,11 @@ function axisField(
   const label = el('label', { className: 'vl-nudge__axis', text: axis.label });
   if (axis.id) label.setAttribute('for', axis.id);
 
+  const unitEl = el('span', { className: 'vl-nudge__unit', text: unit });
   return {
-    row: el('div', { className: 'vl-nudge__val' }, [
-      label,
-      input,
-      el('span', { className: 'vl-nudge__unit', text: unit }),
-    ]),
+    row: el('div', { className: 'vl-nudge__val' }, [label, input, unitEl]),
     input,
+    unitEl,
   };
 }
 
@@ -99,20 +108,30 @@ export function nudgePad(opts: NudgePadOptions): NudgePadHandle {
   const unit = opts.unit ?? 'mm';
   const limits = { x: opts.x.max ?? Infinity, y: opts.y.max ?? Infinity };
 
+  /* Display-per-model, and the places the boxes show. Both are 1 / one-decimal until an app
+     calls `setUnit`, which is why a pad that never does behaves exactly as it always has —
+     including reading back whatever was typed, unrounded. */
+  let scale = 1;
+  let places = 1;
+  const show = (v: number) => Number(v.toFixed(places));
+  /** A scaled box cannot hold the model exactly, so the value read back is quantised to the
+   *  0.1 the pad writes anyway; unscaled, the typed number is returned untouched. */
+  const model = (display: number) => (scale === 1 ? display : round1(display / scale));
+
   const emit = () => opts.onChange?.(read().x, read().y);
 
   const x = axisField(opts.x, unit, emit);
   const y = axisField(opts.y, unit, emit);
 
   const read = () => ({
-    x: parseFloat(x.input.value) || 0,
-    y: parseFloat(y.input.value) || 0,
+    x: model(parseFloat(x.input.value) || 0),
+    y: model(parseFloat(y.input.value) || 0),
   });
 
   /** Write one axis and announce it the way a typed digit would. */
   const write = (axis: 'x' | 'y', value: number) => {
     const input = axis === 'x' ? x.input : y.input;
-    input.value = String(round1(clamp(value, limits[axis])));
+    input.value = String(show(round1(clamp(value, limits[axis])) * scale));
     input.dispatchEvent(new Event('input', { bubbles: true }));
   };
 
@@ -140,15 +159,29 @@ export function nudgePad(opts: NudgePadOptions): NudgePadHandle {
   ]) as unknown as NudgePadHandle;
 
   root.setValue = (value, notify) => {
-    x.input.value = String(round1(clamp(value.x, limits.x)));
-    y.input.value = String(round1(clamp(value.y, limits.y)));
+    x.input.value = String(show(round1(clamp(value.x, limits.x)) * scale));
+    y.input.value = String(show(round1(clamp(value.y, limits.y)) * scale));
     if (notify) emit();
   };
   root.setRange = (axis, max) => {
     limits[axis] = max;
     const input = axis === 'x' ? x.input : y.input;
-    input.min = String(-max);
-    input.max = String(max);
+    input.min = String(show(-max * scale));
+    input.max = String(show(max * scale));
+  };
+  root.setUnit = (nextUnit, nextScale = 1, decimals = 1) => {
+    const current = read();
+    scale = nextScale || 1;
+    places = decimals;
+    for (const f of [x, y]) f.unitEl.textContent = nextUnit;
+    for (const axis of ['x', 'y'] as const) {
+      const f = axis === 'x' ? x : y;
+      const axisStep = (axis === 'x' ? opts.x.step : opts.y.step) ?? 0.1;
+      f.input.step = String(+(axisStep * scale).toPrecision(2));
+      if (limits[axis] !== Infinity) root.setRange(axis, limits[axis]);
+    }
+    // Re-render what the boxes already hold, in the new unit. No `emit`: nothing moved.
+    root.setValue(current);
   };
   root.pad = pad;
   withAccess(root, read, [x.input, y.input]);

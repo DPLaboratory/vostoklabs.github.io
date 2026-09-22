@@ -36,7 +36,18 @@
     "build:foldbox": "pnpm --filter foldbox build",
     "render:topper": "node scripts/render-topper.mjs",
     "dev:keychainCarabiner": "pnpm --filter keychain-carabiner dev",
-    "build:keychainCarabiner": "pnpm --filter keychain-carabiner build"
+    "build:keychainCarabiner": "pnpm --filter keychain-carabiner build",
+    "dev:laserToolbox": "pnpm --filter laser-toolbox dev",
+    "build:laserToolbox": "pnpm --filter laser-toolbox build",
+    "dev:laserKeychain": "pnpm --filter laser-keychain dev",
+    "build:laserKeychain": "pnpm --filter laser-keychain build",
+    "gen:notices": "node scripts/third-party-notices.mjs",
+    "check:notices": "node scripts/third-party-notices.mjs --check",
+    "dev:laserStudio": "pnpm --filter laser-studio dev",
+    "build:laserStudio": "pnpm --filter laser-studio build",
+    "dev:lab": "pnpm --filter library-lab dev",
+    "build:lab": "pnpm --filter library-lab build",
+    "render:laserStudioThumb": "node scripts/render-laser-studio-thumb.mjs"
   },
   "devDependencies": {
     "esbuild": "^0.24.2",

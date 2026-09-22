@@ -161,6 +161,15 @@ const KNOWN_ORPHAN_CLASSES = new Set([
   'edge-radius-label', 'reset-part-colors', 'edge-size-minus', 'edge-size-plus',
   // magnet-generator
   'body-row', 'region-row', 'mg-magnet-step',
+  // laser-studio — arrived with the app when it came out of the unpublished fence on
+  // 2026-09-22, exactly as the note below this list predicts. All three are QUERY HOOKS, like
+  // the clicker's above: `tests/browser.test.mjs`, `tests/node/probe.mjs` and
+  // `tests/node/review-shots.mjs` select on them, and the tests are themselves gitignored, so
+  // neither this check nor a ripgrep of the working tree can see the use. Deleting them as
+  // "unstyled" is a change that typechecks, builds, renders identically and breaks the suite —
+  // which is how it was found. The elements they sit on are styled by their kit classes and by
+  // `.ls-preview__bar .vl-tabs`; these names carry no paint and are not meant to.
+  'ls-preview__unit', 'ls-symbol-text-field', 'ls-symbol-readout',
   // the rest
   'hn-report', 'hub-hero__license-btn', 'nk-reset-section', 'nk-reset-btn',
   'pt-pauses', 'pt-fb__name',

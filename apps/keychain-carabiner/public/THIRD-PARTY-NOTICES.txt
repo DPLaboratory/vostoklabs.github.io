@@ -49,7 +49,15 @@ Abril Fatface, Aldrich, Alegreya Sans SC, Aleo, Alex Brush, Alfa Slab One, Allur
 3. RUNTIME LIBRARIES
 ------------------------------------------------------------
 
+  Every third-party library this application is built from, whether it is depended
+  on directly or reached through one of the shared Vostok Labs packages. Listed in
+  full rather than per build: which of them a given page actually loads depends on
+  which features it uses, and an omitted notice is a licence not honoured while a
+  spare one costs nobody anything.
+
+  fflate 0.8.3 — MIT
   manifold-3d 3.5.1 — Apache-2.0
+  opentype.js 1.3.4 — MIT
   three 0.171.0 — MIT
 
 

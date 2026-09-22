@@ -697,6 +697,20 @@ export function bytesToArrayBuffer(bytes: Uint8Array): ArrayBuffer {
   return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
 }
 
+/** Zip a handful of named files — text or bytes — into one archive.
+ *
+ *  Here rather than in an app because two of them want it now: foldbox's cut pack builds one,
+ *  and Laser Studio has to, because MakerLab's `export()` takes `stl | 3mf | zip` and a cut
+ *  file is none of the first two. Deflate level 6 is fflate's own default and the right trade
+ *  for SVG, which is text and compresses to a fraction. */
+export function buildZip(files: Record<string, string | Uint8Array>): Uint8Array {
+  const entries: Record<string, Uint8Array> = {};
+  for (const [name, data] of Object.entries(files)) {
+    entries[name] = typeof data === 'string' ? strToU8(data) : data;
+  }
+  return zipSync(entries, { level: 6 });
+}
+
 /** A flat ring in millimetres, Y up, as manifold's `CrossSection.toPolygons()` returns it. */
 export type CutRing = [number, number][];
 
@@ -704,6 +718,9 @@ export type CutRing = [number, number][];
 export interface CutLayer {
   /** The group's id, e.g. 'CUT' or 'ENGRAVE'. */
   name: string;
+  /** What this group is, in words, as a `<desc>` inside the group — for a layer an id cannot
+   *  explain: "Card — kraft 300 gsm, score only". Never drawn, so never on the piece. */
+  desc?: string;
   /** The operation colour. Laser software sorts a file into jobs by it: red cuts, black engraves. */
   color: string;
   /**
@@ -713,6 +730,13 @@ export interface CutLayer {
   mode: 'line' | 'fill';
   /** One entry per island: its outer ring and its holes, in any order and either winding. */
   shapes: CutRing[][];
+  /**
+   * OPEN polylines: written as their own hairline paths with no closing `Z`. A score the part's
+   * outline cut into arcs, or the seam where one welded letter meets the next — a line that is
+   * genuinely not a loop, and closing it would burn straight across the piece.
+   * Only meaningful on a 'line' layer.
+   */
+  paths?: CutRing[];
   /**
    * Raster engraves on this layer: a dithered picture placed on the part. Same frame as the
    * rings (millimetres, Y up), `x`/`y` the bottom-left corner. `href` is a data URL, so the
@@ -781,16 +805,19 @@ export function buildCutSvg(layers: CutLayer[], meta: ProvenanceMeta): string {
     .map((l) => ({
       ...l,
       shapes: l.shapes.map((s) => s.map(tidy).filter((r) => r.length >= 3)).filter((s) => s.length > 0),
+      // An open path keeps every point it was given: its last point is where the line stops,
+      // not a duplicate of its first.
+      paths: l.mode === 'line' ? (l.paths ?? []).filter((p) => p.length >= 2) : [],
       images: (l.images ?? []).filter((i) => i.width > 0 && i.height > 0 && i.href),
     }))
-    .filter((l) => l.shapes.length > 0 || l.images.length > 0);
+    .filter((l) => l.shapes.length > 0 || l.paths.length > 0 || l.images.length > 0);
 
   let minX = Infinity;
   let minY = Infinity;
   let maxX = -Infinity;
   let maxY = -Infinity;
   for (const l of live) {
-    for (const s of l.shapes) {
+    for (const s of [...l.shapes, l.paths]) {
       for (const r of s) {
         for (const [x, y] of r) {
           if (x < minX) minX = x;
@@ -812,11 +839,15 @@ export function buildCutSvg(layers: CutLayer[], meta: ProvenanceMeta): string {
   const H = maxY - minY + 2 * CUT_MARGIN_MM;
 
   const point = ([x, y]: [number, number]) => `${mm(x - minX + CUT_MARGIN_MM)} ${mm(maxY - y + CUT_MARGIN_MM)}`;
-  const ringPath = (r: CutRing) => `M ${point(r[0]!)} ${r.slice(1).map((p) => `L ${point(p)}`).join(' ')} Z`;
+  const openPath = (r: CutRing) => `M ${point(r[0]!)} ${r.slice(1).map((p) => `L ${point(p)}`).join(' ')}`;
+  const ringPath = (r: CutRing) => `${openPath(r)} Z`;
 
   const body: string[] = [];
   for (const l of live) {
     body.push(`  <g id="${esc(l.name)}">`);
+    // What the group is, where an id cannot say it — a second material, a different power. Never
+    // drawn, so it can never end up on the piece.
+    if (l.desc) body.push(`    <desc>${esc(l.desc)}</desc>`);
     // Pictures first, under any paths on the same layer. The Y flip puts the image's TOP edge
     // at its y + height; `image-rendering: pixelated` keeps a 1-bit dither crisp in viewers
     // rather than smeared into grey by bilinear scaling.
@@ -840,6 +871,11 @@ export function buildCutSvg(layers: CutLayer[], meta: ProvenanceMeta): string {
         for (const { r } of s) {
           body.push(`    <path d="${ringPath(r)}" fill="none" stroke="${l.color}" stroke-width="${CUT_HAIRLINE_MM}"/>`);
         }
+      }
+      // Open polylines last, each its own path and none of them closed (rule 1 still holds: one
+      // line per element, so the head lifts between them).
+      for (const p of l.paths) {
+        body.push(`    <path d="${openPath(p)}" fill="none" stroke="${l.color}" stroke-width="${CUT_HAIRLINE_MM}"/>`);
       }
     }
     body.push('  </g>');

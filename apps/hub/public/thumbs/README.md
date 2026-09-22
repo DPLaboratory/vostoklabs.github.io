@@ -13,6 +13,10 @@ Present:
   (a render from `scripts/render-carabiner.mjs`, until there is a photo)
 - `large-box.png`, `rugged-box.png`, `washer-spacer.png`, `headphone-hook.png`,
   `edge-mount-dock.png`, `powerstrip-holder.png`
+- `laser-studio.png` — six of its designs, built for real and laid out three across
+  (`pnpm render:laserStudioThumb`). A catalogue app is badly served by one product photo:
+  the pitch is that there are forty-two of these. Replace it with a photo of a cut piece
+  when there is one worth showing.
 
 Missing:
 

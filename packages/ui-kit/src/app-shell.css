@@ -20,6 +20,32 @@
 }
 .vl-app > .vl-topbar { grid-column: 1 / -1; }
 
+/* No topbar — an embedded build, where the host draws its own chrome.
+   The rows above exist for a bar that is not there, so without this the panels are placed in
+   the `auto` row and sized to their CONTENT: a 532 px band of app at the top of a 920 px window,
+   the rest dead, and the band changing height whenever a panel's content does. Ian saw it in
+   the MakerLab host on 2026-09-22 ("the window jumps, its not stable, half the screen is
+   empty"); it was never about MakerLab — the same build standalone did it too. One row, and it
+   is the one that fills. */
+.vl-app--no-topbar { grid-template-rows: minmax(0, 1fr); }
+
+/* Two columns: the stage and one panel. A form-driven editor has nothing for a third column,
+   and a dead first column is what "cluttered" looked like. The panel is clamped, not a bare vw:
+   on an ultrawide the extra width would only pad rows that do not get any wider. */
+.vl-app.vl-app--2col {
+  grid-template-columns: minmax(0, 1fr) clamp(360px, 27vw, 460px);
+}
+@media (max-width: 900px) {
+  .vl-app.vl-app--2col {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(280px, 46vh) auto;
+    max-height: none;
+  }
+  /* Same off-by-one row stacked as unstacked: with no bar there are two rows, not three. */
+  .vl-app.vl-app--2col.vl-app--no-topbar { grid-template-rows: minmax(280px, 46vh) auto; }
+  .vl-app--2col > .vl-panel { height: auto; border-left: none; border-top: 1px solid var(--line); }
+}
+
 /* Left / right side panels. */
 .vl-panel {
   overflow: hidden;

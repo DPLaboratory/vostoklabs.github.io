@@ -345,6 +345,8 @@ export interface TextFieldOptions {
   disabled?: boolean;
   /** Native tooltip / longer explanation. */
   title?: string;
+  /** Optional "?" tooltip shown next to the label. */
+  help?: string;
   onInput?: (value: string) => void;
   /** Fired on Enter and on blur, i.e. when the value is meant to be acted on. */
   onCommit?: (value: string) => void;
@@ -393,6 +395,7 @@ export function textField(opts: TextFieldOptions): TextFieldHandle {
   input.id = id;
   const label = el('label', { text: opts.label });
   label.setAttribute('for', id);
+  if (opts.help) label.append(helpTip(opts.help));
   if (!opts.label) input.setAttribute('aria-label', opts.placeholder ?? opts.title ?? 'Text');
 
   const root = el('div', { className: 'vl-field' }, [

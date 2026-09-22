@@ -112,6 +112,22 @@ export const ICONS = {
   resetPosition: stroke('<polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/>'),
   // The overflow of a toolbar group (lucide more-horizontal).
   more: stroke('<circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/>'),
+
+  /* Settings-rail icons for the laser templates (2026-09-20): a rail names its categories
+     by what they set, and a category the kit had no glyph for wore `maximize` by default,
+     so five rails in a row looked like one. Drawn in the same lucide-style stroke. */
+  // Stacked sheets — a design cut in layers.
+  layers: stroke('<path d="m12 3 9 5-9 5-9-5 9-5z"/><path d="m3 13 9 5 9-5"/><path d="m3 17 9 5 9-5"/>', 18),
+  // A 2 × 2 grid — tiles, a crossword, a puzzle tray.
+  grid: stroke('<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>', 18),
+  // A QR code: three finders and a scatter of modules.
+  qr: stroke('<rect x="3" y="3" width="6" height="6" rx="1"/><rect x="15" y="3" width="6" height="6" rx="1"/><rect x="3" y="15" width="6" height="6" rx="1"/><path d="M15 15h2v2h-2z"/><path d="M19 15h2"/><path d="M15 19h2"/><path d="M19 19h2v2"/>', 18),
+  // A plate leaning on a base — stands, feet, stakes, posts.
+  stand: stroke('<path d="M8 20h8"/><path d="M12 20v-4"/><path d="m6 4 12 2v10L6 14z"/>', 18),
+  // A list with bullets — names, guests, lines.
+  list: stroke('<path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/>', 18),
+  // Two sliders — a category of plain settings.
+  sliders: stroke('<path d="M4 21v-7"/><path d="M4 10V3"/><path d="M12 21v-9"/><path d="M12 8V3"/><path d="M20 21v-5"/><path d="M20 12V3"/><path d="M1 14h6"/><path d="M9 8h6"/><path d="M17 16h6"/>', 18),
 } as const;
 
 /** Parse a raw SVG string into an element. */
